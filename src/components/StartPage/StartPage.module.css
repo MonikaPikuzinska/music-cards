@@ -1,0 +1,16 @@
+.wrapper {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: #d1fae4;
+    font-family: Lato, Helvetica, sans-serif;
+}
+
+.header {
+    font-weight: bold;
+    color: #919191c7;
+    font-size: 28px;
+}
