@@ -5,13 +5,15 @@ import { RouterProvider } from "react-router-dom";
 // import store from "./redux";
 import "./App.css";
 import "primereact/resources/themes/lara-light-indigo/theme.css"; //theme
-import "primereact/resources/primereact.min.css"; //core css 
+import "primereact/resources/primereact.min.css"; //core css
+import { PrimeReactProvider } from "primereact/api";
 
 function App() {
   return (
-    // <Provider store={store}>
+    <PrimeReactProvider>
+      <></>
       <RouterProvider router={router} />
-    // </Provider>
+    </PrimeReactProvider>
   );
 }
 
