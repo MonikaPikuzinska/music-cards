@@ -15,12 +15,11 @@ const Login = () => {
     <div className={`${styles["login-wrapper"]}`}>
       <h1 className={`${styles["login-header"]}`}>Imagine the music </h1>
       <Card
-        title="Log in"
         footer={footer}
         style={{ width: "20rem" }}
         className="md:w-25rem"
       >
-        <InputText />
+        <InputText placeholder="Provide your name" className="p-inputtext-sm"  />
       </Card>
     </div>
   );

@@ -4,7 +4,7 @@ import { router } from "./routes";
 import { RouterProvider } from "react-router-dom";
 // import store from "./redux";
 import "./App.css";
-import "primereact/resources/themes/lara-light-indigo/theme.css"; //theme
+import "primereact/resources/themes/lara-light-cyan/theme.css"; //theme
 import "primereact/resources/primereact.min.css"; //core css
 import { PrimeReactProvider } from "primereact/api";
 
