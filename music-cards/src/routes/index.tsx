@@ -1,6 +1,7 @@
 import React, { Suspense } from "react";
 import { createBrowserRouter } from "react-router-dom";
 import Login from "../pages/Login/Login";
+import Game from "../pages/Game/Game";
 
 const NoMatch = () => <h1>404</h1>;
 const Loading = () => <>x</>;
@@ -13,6 +14,9 @@ const routes = [
   {
     path: "/",
     element: <Login />,
+  },{
+    path: "/game/:id",
+    element: <Game />,
   },
   {
     path: "*",
