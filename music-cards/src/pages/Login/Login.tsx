@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import styles from "./Login.module.css";
 import { Card } from "primereact/card";
 import { Button } from "primereact/button";
 import { InputText } from "primereact/inputtext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid } from "uuid";
 
 const Login = () => {
+  const {id}=useParams()
   const navigate = useNavigate();
 
   const [loginName, setLoginName] = useState<string | null>(null);
@@ -18,8 +18,8 @@ const Login = () => {
   );
 
   return (
-    <div className={`${styles["login-wrapper"]}`}>
-      <h1 className={`${styles["login-header"]}`}>Imagine the music </h1>
+    <div>
+      <h1>Imagine the music </h1>
       <Card footer={footer} style={{ width: "20rem" }} className="md:w-25rem">
         <InputText
           onChange={(e) => setLoginName(e.target.value)}

@@ -12,7 +12,7 @@ const withLayout = (element: React.ReactNode) => (
 
 const routes = [
   {
-    path: "/",
+    path: "/:id",
     element: <Login />,
   },{
     path: "/game/:id",
