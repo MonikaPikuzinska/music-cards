@@ -6,12 +6,14 @@ import { useNavigate, useParams } from "react-router-dom";
 import { v4 as uuid, UUIDTypes } from "uuid";
 import { useMutation } from "@tanstack/react-query";
 import { createSession } from "../../api/api";
+import { useAuth } from "../../context/AuthContext";
 
-const Login = () => {
+const Login = () => {  const { signInWithDiscord, signOut,signInWithGmail, user } = useAuth();
+
   const { id } = useParams();
   const navigate = useNavigate();
 
-  const { mutate, isPending, isError } = useMutation({
+  const { mutate, isPending, isError,data } = useMutation({
     mutationFn: (data: { id: UUIDTypes }) => {
       return createSession(data.id);
     },
@@ -20,12 +22,17 @@ const Login = () => {
   const createGameBoard = () => {
     mutate({
       id: uuid(),
-    });
-  };
+    });console.log(data);
+    
+  };console.log(user);
+  
   const footer = (
     <div className="flex flex-wrap justify-content-end gap-2">
-      <Button label="Log in" onClick={() => createGameBoard()} />
-    </div>
+      <Button label="Log in with Discord" onClick={signInWithDiscord} />
+          <Button label="Log in with Gimail" onClick={signInWithGmail} />
+      <Button label="Log out" onClick={signOut} />
+      <Button label="Create a game" onClick={createGameBoard} />
+</div>
   );
 
   return (

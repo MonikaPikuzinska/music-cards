@@ -1,32 +1,19 @@
-import React, { Suspense } from "react";
-import { createBrowserRouter } from "react-router-dom";
-import Login from "../pages/Login/Login";
+import { Route, Routes } from "react-router";
+import Login  from "../pages/Login/Login";
 import Game from "../pages/Game/Game";
 
-const NoMatch = () => <h1>404</h1>;
-const Loading = () => <>x</>;
+function RoutesLinks() {
+  return (
+    <div className="min-h-screen bg-black text-gray-100 transition-opacity duration-700 pt-20">
+      {/* <Navbar /> */}
+      <div className="container mx-auto px-4 py-6">
+        <Routes>
+          <Route path="/" element={<Login />} />
+          <Route path="/game/:id" element={<Game />} />
+        </Routes>
+      </div>
+    </div>
+  );
+}
 
-const withLayout = (element: React.ReactNode) => (
-    <Suspense fallback={<Loading />}>{element}</Suspense>
-);
-
-const routes = [
-  {
-    path: "/:id",
-    element: <Login />,
-  },{
-    path: "/game/:id",
-    element: <Game />,
-  },
-  {
-    path: "*",
-    element: <NoMatch />,
-  },
-];
-
-export const router = createBrowserRouter(
-  routes.map(({  element, ...rest }) => ({
-    ...rest,
-    element:  withLayout(element),
-  })),
-);
+export default RoutesLinks;
