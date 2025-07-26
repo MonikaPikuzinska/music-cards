@@ -1,9 +1,8 @@
 import React from "react";
-import styles from "./Game.module.css";
 
 const Game = () => {
   return (
-    <div className={`${styles["game-wrapper"]}`}>
+    <div>
       <h1 >Imagine the music </h1>
     </div>
   );

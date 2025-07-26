@@ -40,7 +40,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, signInWithDiscord,signInWithGmail, signOut }}>
+    <AuthContext.Provider
+      value={{ user, signInWithDiscord, signInWithGmail, signOut }}
+    >
       {" "}
       {children}{" "}
     </AuthContext.Provider>
