@@ -20,7 +20,7 @@ export const NavBar = () => {
                 )}
                 <button
                   onClick={signOut}
-                  className="bg-gray-400 text-amber-50 px-3 py-1 rounded mr-5"
+                  className="bg-gray-400 cursor-pointer text-amber-50 px-3 py-1 rounded mr-5"
                 >
                   Sign Out
                 </button>
@@ -29,7 +29,7 @@ export const NavBar = () => {
           </div>{" "}
           <button
             onClick={() => console.log("inst")}
-            className="bg-indigo-400 text-amber-50 px-3 py-1 rounded"
+            className="bg-indigo-400 text-amber-50 px-3 cursor-pointer py-1 rounded"
           >
             Instruction
           </button>
