@@ -1,29 +1,59 @@
-import React, { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { v4 as uuid, UUIDTypes } from "uuid";
 import { useMutation } from "@tanstack/react-query";
-import { createSession } from "../../api/api";
+import {
+  createGame,
+  createGameBoardDB,
+  createSession,
+  createUser,
+} from "../../api/api";
 import { useAuth } from "../../context/AuthContext";
+import { IUser } from "../../api/interface";
+import { useEffect, useState } from "react";
 
 const Login = () => {
-  const [loginName, setLoginName] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<UUIDTypes>();
+  const [gameId, setGameId] = useState<UUIDTypes>();
+  const [userId, setUserId] = useState<UUIDTypes>();
+  const [gameLink, setGameLink] = useState<string>("");
 
-  const { signInWithDiscord, signOut, signInWithGmail, user } = useAuth();
+  const { signInWithDiscord, signInWithGmail, user } = useAuth();
 
-  const { id } = useParams();
   const navigate = useNavigate();
 
   const { mutate } = useMutation({
-    mutationFn: (data: { id: UUIDTypes }) => {
-      return createSession(data.id);
+    mutationFn: async (data: { userData: IUser }) => {
+      await createGameBoardDB(data.userData).then(() =>
+        navigate(`/game/${data.userData.session_id}`)
+      );
     },
   });
 
+  useEffect(() => {
+    if (user) {
+      setSessionId(uuid());
+      setGameId(uuid());
+      setUserId(uuid());
+    }
+  }, [user]);
+
   const createGameBoard = () => {
-    mutate({
-      id: uuid(),
-    });
+    if (user && sessionId && gameId && userId)
+      mutate({
+        userData: {
+          id: userId,
+          session_id: sessionId,
+          game_id: gameId,
+          name: user ? user.user_metadata?.name : uuid(),
+          avatar: user ? user.user_metadata?.avatar_url : "",
+          voted: false,
+          points: 0,
+          song_id: "",
+          is_logged: true,
+        },
+      });
   };
+
   console.log(user);
 
   return (
@@ -65,8 +95,8 @@ const Login = () => {
               <input
                 type="text"
                 id="link"
-                value={""}
-                onChange={(e) => console.log(e.target.value)}
+                value={gameLink}
+                onChange={(e) => setGameLink(e.target.value)}
                 className="w-80 border-2 focus:outline-none focus:ring-0 focus:border-indigo-300/50 border-indigo-300/50 bg-transparent p-0.5 rounded"
               />
             </div>
