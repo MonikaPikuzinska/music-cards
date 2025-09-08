@@ -4,8 +4,7 @@ import { supabase } from "../supabase-client";
 
 interface AuthContextType {
   user: User | null;
-  signInWithDiscord: () => void;
-  signInWithGmail: () => void;
+  signInWithSpotify: () => void;
   signOut: () => void;
 }
 
@@ -28,23 +27,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  const signInWithDiscord = () => {
-    supabase.auth.signInWithOAuth({ provider: "discord" });
-  };
-
-  const signInWithGmail = () => {
-    supabase.auth.signInWithOAuth({ provider: "google" });
+  const signInWithSpotify = () => {
+    supabase.auth.signInWithOAuth({
+      provider: "spotify",
+    });
   };
   const signOut = () => {
     supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider
-      value={{ user, signInWithDiscord, signInWithGmail, signOut }}
-    >
-      {" "}
-      {children}{" "}
+    <AuthContext.Provider value={{ user, signInWithSpotify, signOut }}>
+      {children}
     </AuthContext.Provider>
   );
 };

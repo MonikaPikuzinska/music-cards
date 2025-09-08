@@ -1,15 +1,11 @@
 import { useNavigate } from "react-router-dom";
 import { v4 as uuid, UUIDTypes } from "uuid";
 import { useMutation } from "@tanstack/react-query";
-import {
-  createGame,
-  createGameBoardDB,
-  createSession,
-  createUser,
-} from "../../api/api";
+import { createGameBoardDB } from "../../api/api";
 import { useAuth } from "../../context/AuthContext";
 import { IUser } from "../../api/interface";
 import { useEffect, useState } from "react";
+import Button from "../../components/Button/Button";
 
 const Login = () => {
   const [sessionId, setSessionId] = useState<UUIDTypes>();
@@ -17,7 +13,7 @@ const Login = () => {
   const [userId, setUserId] = useState<UUIDTypes>();
   const [gameLink, setGameLink] = useState<string>("");
 
-  const { signInWithDiscord, signInWithGmail, user } = useAuth();
+  const { signInWithSpotify, user } = useAuth();
 
   const navigate = useNavigate();
 
@@ -63,27 +59,17 @@ const Login = () => {
         {!user ? (
           <div className="flex h-full justify-center items-center flex-col">
             {" "}
-            <button
-              onClick={signInWithDiscord}
-              className="m-3 cursor-pointer bg-indigo-400 text-amber-50 px-3 py-1 rounded"
-            >
-              Log in with Discord
-            </button>
-            <button
-              className="m-3 cursor-pointer bg-indigo-400 text-amber-50 px-3 py-1 rounded"
-              onClick={signInWithGmail}
-            >
-              Log in with Gimail
-            </button>
+            <Button
+              onClick={signInWithSpotify}
+              label="Log in with Spotify"
+            />
           </div>
         ) : (
           <div className="flex h-full justify-center items-center flex-col">
-            <button
-              className="mt-3 mb-1 cursor-pointer bg-indigo-400 text-amber-50 px-3 py-1 rounded"
+            <Button
               onClick={createGameBoard}
-            >
-              Create a game
-            </button>
+              label="Create a game"
+            />
             <h1 className="text-indigo-400 text-l mt-3 mb-3">or </h1>
             <div>
               <label
@@ -100,12 +86,10 @@ const Login = () => {
                 className="w-80 border-2 focus:outline-none focus:ring-0 focus:border-indigo-300/50 border-indigo-300/50 bg-transparent p-0.5 rounded"
               />
             </div>
-            <button
-              className="m-3 cursor-pointer bg-indigo-400 text-amber-50 px-3 py-1 rounded"
-              // onClick={signInWithGmail}
-            >
-              Enter the game
-            </button>
+            <Button
+              onClick={() => navigate(gameLink)}
+              label="Enter the game"
+            />
           </div>
         )}
       </div>

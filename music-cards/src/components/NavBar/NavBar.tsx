@@ -1,5 +1,6 @@
 import React from "react";
 import { useAuth } from "../../context/AuthContext";
+import Button from "../Button/Button";
 
 export const NavBar = () => {
   const { signOut, user } = useAuth();
@@ -27,12 +28,10 @@ export const NavBar = () => {
               </div>
             ) : null}
           </div>{" "}
-          <button
+          <Button
             onClick={() => console.log("inst")}
-            className="bg-indigo-400 text-amber-50 px-3 cursor-pointer py-1 rounded"
-          >
-            Instruction
-          </button>
+            label="Instruction"
+          />
         </div>
       </div>
     </nav>
