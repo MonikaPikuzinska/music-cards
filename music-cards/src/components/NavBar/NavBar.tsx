@@ -21,7 +21,7 @@ export const NavBar = () => {
                 )}
                 <button
                   onClick={signOut}
-                  className="bg-gray-400 cursor-pointer text-amber-50 px-3 py-1 rounded mr-5"
+                  className="bg-gray-400 mt-3 cursor-pointer text-amber-50 px-3 py-1 rounded mr-5"
                 >
                   Sign Out
                 </button>
