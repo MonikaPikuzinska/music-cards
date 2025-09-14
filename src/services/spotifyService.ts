@@ -1,5 +1,6 @@
 import axios from "axios";
 import { supabase } from "../supabase-client";
+import { getRandomSearch } from "../utils/getRandomSearch";
 
 // Helper to get the Spotify access token from Supabase cookie
 const getSpotifyAccessToken = async (): Promise<string | null> => {
@@ -39,9 +40,10 @@ export const fetchSpotifyPlaylists = async () => {
 };
 
 export const fetchSpotifyRandomSearch = async () => {
-  return spotifyApiRequest("/me/search", {
+  return spotifyApiRequest("/search", {
     params: {
-      q: "remaster%2520track%3ADoxy%2520artist%3AMiles%2520Davis",
+      q: getRandomSearch(),
+      offset: Math.floor(Math.random() * 1000),
       type: "track",
       limit: 10,
     },
