@@ -1,12 +1,20 @@
-import React from "react";
+import React, { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import Button from "../Button/Button";
+import PopUp from "../PopUp/PopUp";
+import Instruction from "../Instruction/Instruction";
 
 export const NavBar = () => {
+  const [openInstruction, setOpenInstruction] = useState(false);
   const { signOut, user } = useAuth();
+
 
   return (
     <nav className="fixed top-0 w-full">
+      <PopUp isOpen={openInstruction} onClose={() => setOpenInstruction(false)}>
+        <h2 className="text-xl font-bold mb-4">Instructions</h2>
+        <Instruction />
+      </PopUp>
       <div className="mx-auto px-4">
         <div className="flex items-center justify-end h-16">
           <div className="hidden md:flex items-center">
@@ -29,7 +37,7 @@ export const NavBar = () => {
             ) : null}
           </div>{" "}
           <Button
-            onClick={() => console.log("inst")}
+            onClick={() => setOpenInstruction(true)}
             label="Instruction"
           />
         </div>
