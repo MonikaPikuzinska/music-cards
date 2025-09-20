@@ -1,4 +1,5 @@
 import { faSquare, faSquareCheck } from "@fortawesome/free-regular-svg-icons";
+import { faMusic } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { type HTMLAttributes } from "react";
 
@@ -36,17 +37,32 @@ const SpotifyPlayer = ({
       className="m-2 flex flex-col items-center cursor-pointer"
       onClick={onSelect}
     >
-      {isSelected ? (
+      <div className="flex items-center">
+        {" "}
         <FontAwesomeIcon
-          icon={faSquareCheck}
-          className="text-indigo-400 mb-1 cursor-pointer fa-lg"
+          icon={faMusic}
+          className={`m-1 cursor-pointer fa-lg ${
+            isSelected ? "text-indigo-400" : "text-gray-400"
+          }`}
         />
-      ) : (
+        {isSelected ? (
+          <FontAwesomeIcon
+            icon={faSquareCheck}
+            className="text-indigo-400 mb-1 cursor-pointer fa-lg"
+          />
+        ) : (
+          <FontAwesomeIcon
+            icon={faSquare}
+            className="text-gray-400 fa-lg mb-1 cursor-pointer"
+          />
+        )}
         <FontAwesomeIcon
-          icon={faSquare}
-          className="text-indigo-400 fa-lg mb-1 cursor-pointer"
+          icon={faMusic}
+          className={`m-1 cursor-pointer fa-lg ${
+            isSelected ? "text-indigo-400" : "text-gray-400"
+          }`}
         />
-      )}
+      </div>
       <iframe
         title="Spotify Web Player"
         src={`https://open.spotify.com/embed${url.pathname}`}
