@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useSpotifyRandomSearch } from "../../services/spotifyTanStackService";
 import { useParams } from "react-router";
-import { createUser, getUsersBySessionId } from "../../api/api";
+import { createUser, getGameById, getUsersBySessionId } from "../../api/api";
 import { useAuth } from "../../context/AuthContext";
 import { v4 as uuid, UUIDTypes } from "uuid";
 import getRandomAvatar, { icons } from "../../utils/getRandomAvatar";
-import { IUser } from "../../api/interface";
+import { IGame, IUser } from "../../api/interface";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import CopyLink from "../../components/CopyLink/CopyLink";
 
 const Game = () => {
   const { user } = useAuth();
@@ -15,6 +16,7 @@ const Game = () => {
   const [isUserCreated, setIsUserCreated] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [usersList, setUsersList] = useState<IUser[]>([]);
+  const [masterId, setMasterId] = useState<UUIDTypes | null>(null);
 
   useEffect(() => {
     if (error) {
@@ -26,15 +28,32 @@ const Game = () => {
     if (id && user) {
       getUsersBySessionId(id).then((users: IUser[]) => {
         setUsersList(users);
-        if (
-          users.length > 1 ||
-          users[0].name !== user.user_metadata?.full_name
-        ) {
+
+        // Fetch game and set masterId if users exist
+        if (users.length > 0) {
+          getGameById(users[0].game_id.toString())
+            .then((game: IGame) => setMasterId(game.master_id))
+            .catch(() => setErrorMessage("Error fetching game data"));
+        }
+
+        // Check for max players first
+        if (users.length >= 6) {
+          setIsUserCreated(true);
+          setErrorMessage("Too many players");
+          return;
+        }
+
+        // Check if current user already exists
+        const currentUserName =
+          user.user_metadata?.full_name || user.user_metadata?.name || "";
+        const userExists = users.some((u) => u.name === currentUserName);
+
+        if (!userExists) {
           createUser({
             id: uuid(),
             session_id: id,
-            game_id: users[0].game_id,
-            name: user.user_metadata?.name ? user.user_metadata?.name : uuid(),
+            game_id: users[0]?.game_id,
+            name: currentUserName || uuid(),
             avatar: user
               ? getRandomAvatar(users.map((u) => u.avatar)).iconName
               : "",
@@ -43,16 +62,11 @@ const Game = () => {
             song_id: "",
             is_logged: true,
           })
-            .then(() => {
-              setIsUserCreated(true);
-            })
-            .catch((err) => {
+            .then(() => setIsUserCreated(true))
+            .catch(() => {
               setIsUserCreated(false);
               setErrorMessage("Error creating user");
             });
-        } else if (users.length >= 6) {
-          setIsUserCreated(true);
-          setErrorMessage("Too many players");
         } else {
           setIsUserCreated(true);
         }
@@ -76,7 +90,13 @@ const Game = () => {
                   icon={icons[u.avatar as keyof typeof icons]}
                   className="text-indigo-400"
                 />
-                <span className="ml-2 mr-2 font-bold">{u.name}</span>
+                <span
+                  className={`ml-2 mr-2 font-bold ${
+                    masterId === u.id ? "text-indigo-600" : ""
+                  }`}
+                >
+                  {u.name}
+                </span>
                 <span className="mr-2">{`${u.points} ${
                   u.points === 1 ? "point" : "points"
                 }`}</span>
@@ -85,6 +105,7 @@ const Game = () => {
           </ul>
         </div>
       )}
+      <CopyLink />
     </div>
   );
 };

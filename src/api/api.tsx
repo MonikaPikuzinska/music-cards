@@ -39,6 +39,19 @@ export const createGameBoardDB = async (userData: IUser) => {
   );
 };
 
+export async function getGameById(gameId: string) {
+  const { data, error } = await supabase
+    .from("games")
+    .select("*")
+    .eq("id", gameId)
+    .single();
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
+
 export async function getUsersBySessionId(sessionId: string) {
   const { data, error } = await supabase
     .from("users")
