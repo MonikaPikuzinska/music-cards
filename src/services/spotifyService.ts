@@ -45,7 +45,7 @@ export const fetchSpotifyRandomSearch = async () => {
       q: getRandomSearch(),
       offset: Math.floor(Math.random() * 1000),
       type: "track",
-      limit: 10,
+      limit: 12,
     },
   });
 };

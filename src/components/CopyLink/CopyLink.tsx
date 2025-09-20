@@ -23,7 +23,7 @@ const CopyLink: React.FC = () => {
           type="text"
           value={url}
           readOnly
-          className="w-72 px-2 py-1 border border-indigo-300 rounded bg-gray-100 text-gray-400 focus:outline-none cursor-default"
+          className="w-60 px-2 py-1 border border-indigo-300 rounded bg-gray-100 text-gray-400 focus:outline-none cursor-default"
         />
         <button
           onClick={handleCopy}
