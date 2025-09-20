@@ -6,6 +6,7 @@ import { useAuth } from "../../context/AuthContext";
 import { IUser } from "../../api/interface";
 import { useEffect, useState } from "react";
 import Button from "../../components/Button/Button";
+import getRandomAvatar from "../../utils/getRandomAvatar";
 
 const Login = () => {
   const [sessionId, setSessionId] = useState<UUIDTypes>();
@@ -35,6 +36,7 @@ const Login = () => {
   }, [user]);
 
   const createGameBoard = () => {
+    const randomAvatar = getRandomAvatar();
     if (user && sessionId && gameId && userId)
       mutate({
         userData: {
@@ -42,7 +44,7 @@ const Login = () => {
           session_id: sessionId,
           game_id: gameId,
           name: user ? user.user_metadata?.name : uuid(),
-          avatar: user ? user.user_metadata?.avatar_url : "",
+          avatar: user ? randomAvatar.iconName : "",
           voted: false,
           points: 0,
           song_id: "",
@@ -70,7 +72,7 @@ const Login = () => {
   return (
     <div className="flex  justify-center items-center flex-col h-100">
       <h1 className="text-indigo-400 text-2xl font-bold">Imagine the music </h1>
-      <div className="w-100 h-80 mt-5 p-5 shadow-lg">
+      <div className="w-100 h-80 mt-5 p-5 shadow-lg bg-white/50 rounded">
         {!user ? (
           <div className="flex h-full justify-center items-center flex-col">
             {" "}

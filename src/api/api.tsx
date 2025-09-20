@@ -38,3 +38,15 @@ export const createGameBoardDB = async (userData: IUser) => {
       })
   );
 };
+
+export async function getUsersBySessionId(sessionId: string) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("session_id", sessionId);
+
+  if (error) {
+    throw error;
+  }
+  return data;
+}
