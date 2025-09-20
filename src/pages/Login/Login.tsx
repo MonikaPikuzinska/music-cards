@@ -12,6 +12,7 @@ const Login = () => {
   const [gameId, setGameId] = useState<UUIDTypes>();
   const [userId, setUserId] = useState<UUIDTypes>();
   const [gameLink, setGameLink] = useState<string>("");
+  const [isInvalidLink, setIsInvalidLink] = useState<boolean>(false);
 
   const { signInWithSpotify, user } = useAuth();
 
@@ -50,6 +51,20 @@ const Login = () => {
       });
   };
 
+  const isValidGameLink = (link: string): boolean => {
+    const sanitized = link.trim();
+
+    const hasGamePath = sanitized.includes("/game/");
+    // Only allow alphanumeric, dash, slash, and underscore after domain (very basic)
+    const validPattern = /^\/?game\/[\w-]+$/;
+    // Accept also full URLs like https://domain.com/game/xxxx
+    const validFullUrlPattern = /^https?:\/\/.+\/game\/[\w-]+$/;
+    return (
+      hasGamePath &&
+      (validPattern.test(sanitized) || validFullUrlPattern.test(sanitized))
+    );
+  };
+
   console.log(user);
 
   return (
@@ -59,17 +74,11 @@ const Login = () => {
         {!user ? (
           <div className="flex h-full justify-center items-center flex-col">
             {" "}
-            <Button
-              onClick={signInWithSpotify}
-              label="Log in with Spotify"
-            />
+            <Button onClick={signInWithSpotify} label="Log in with Spotify" />
           </div>
         ) : (
           <div className="flex h-full justify-center items-center flex-col">
-            <Button
-              onClick={createGameBoard}
-              label="Create a game"
-            />
+            <Button onClick={createGameBoard} label="Create a game" />
             <h1 className="text-indigo-400 text-l mt-3 mb-3">or </h1>
             <div>
               <label
@@ -78,6 +87,11 @@ const Login = () => {
               >
                 Provide link to the game
               </label>
+              {isInvalidLink && (
+                <p className="text-red-500 text-sm mb-2">
+                  Invalid game link. Please check and try again.
+                </p>
+              )}
               <input
                 type="text"
                 id="link"
@@ -87,7 +101,18 @@ const Login = () => {
               />
             </div>
             <Button
-              onClick={() => navigate(gameLink)}
+              onClick={() => {
+                if (isValidGameLink(gameLink)) {
+                  const match =
+                    gameLink.match(/\/game\/([\w-]+)/) ||
+                    gameLink.match(/game\/([\w-]+)/);
+                  if (match && match[1]) {
+                    navigate(`/game/${match[1]}`);
+                  }
+                } else {
+                  setIsInvalidLink(true);
+                }
+              }}
               label="Enter the game"
             />
           </div>
