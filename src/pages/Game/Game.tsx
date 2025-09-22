@@ -32,6 +32,9 @@ const Game = () => {
   const [usersList, setUsersList] = useState<IUser[]>([]);
   const [masterId, setMasterId] = useState<UUIDTypes | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<IUser | null>(null);
+  const [isButtonSelectDisabled, setIsButtonSelectDisabled] =
+    useState<boolean>(false);
   console.log(data);
 
   useEffect(() => {
@@ -49,9 +52,19 @@ const Game = () => {
         setMasterId,
         setIsUserCreated,
         setErrorMessage,
+        setCurrentUser,
       });
     }
   }, [id, user]);
+
+  useEffect(() => {
+    setIsButtonSelectDisabled(
+      !isUserCreated ||
+        usersList.length < 4 ||
+        !selectedTrack ||
+        currentUser?.id !== masterId
+    );
+  }, [isUserCreated, usersList, currentUser, masterId, selectedTrack]);
 
   return (
     <div className="flex flex-row items-start p-4">
@@ -68,7 +81,7 @@ const Game = () => {
         isUserCreated={isUserCreated}
         selectedTrack={selectedTrack}
         setSelectedTrack={setSelectedTrack}
-        usersCount={usersList.length}
+        isSelectDisabled={isButtonSelectDisabled}
       />
       <div className="flex flex-col items-center">
         {" "}

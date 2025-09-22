@@ -13,7 +13,7 @@ interface SongsListProps {
   isUserCreated: boolean;
   selectedTrack: string | null;
   setSelectedTrack: (id: string | null) => void;
-  usersCount: number;
+  isSelectDisabled: boolean;
 }
 
 const SongsList: React.FC<SongsListProps> = ({
@@ -21,7 +21,7 @@ const SongsList: React.FC<SongsListProps> = ({
   isUserCreated,
   selectedTrack,
   setSelectedTrack,
-  usersCount,
+  isSelectDisabled,
 }) => (
   <div className="flex flex-wrap justify-center items-center max-w-9/12">
     {isUserCreated &&
@@ -39,11 +39,11 @@ const SongsList: React.FC<SongsListProps> = ({
       <button
         onClick={() => setSelectedTrack(null)}
         className={`px-3 py-1 rounded transition-colors ${
-          usersCount < 4 || !selectedTrack
+          isSelectDisabled
             ? "bg-gray-300 text-gray-500 cursor-not-allowed"
             : "bg-indigo-400 text-white hover:bg-indigo-500"
         }`}
-        disabled={usersCount < 4 || !selectedTrack}
+        disabled={isSelectDisabled}
       >
         Select
       </button>

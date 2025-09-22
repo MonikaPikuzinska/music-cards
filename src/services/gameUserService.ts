@@ -10,6 +10,7 @@ interface HandleUserJoinGameParams {
   setMasterId: (id: UUIDTypes) => void;
   setIsUserCreated: (created: boolean) => void;
   setErrorMessage: (msg: string | null) => void;
+  setCurrentUser: (user: IUser | null) => void;
 }
 
 export const handleUserJoinGame = async ({
@@ -19,6 +20,7 @@ export const handleUserJoinGame = async ({
   setMasterId,
   setIsUserCreated,
   setErrorMessage,
+  setCurrentUser,
 }: HandleUserJoinGameParams) => {
   try {
     const users: IUser[] = await getUsersBySessionId(id.toString());
@@ -44,11 +46,11 @@ export const handleUserJoinGame = async ({
     // Check if current user already exists
     const currentUserName =
       user.user_metadata?.full_name || user.user_metadata?.name || "";
-    const userExists = users.some((u) => u.name === currentUserName);
+    const userExists = users.find((u) => u.name === currentUserName);
 
     if (!userExists) {
       try {
-        await createUser({
+        const newUser = {
           id: uuid(),
           session_id: id,
           game_id: users[0]?.game_id,
@@ -60,13 +62,16 @@ export const handleUserJoinGame = async ({
           points: 0,
           song_id: "",
           is_logged: true,
-        });
+        };
+        setCurrentUser(newUser);
+        await createUser(newUser);
         setIsUserCreated(true);
       } catch {
         setIsUserCreated(false);
         setErrorMessage("Error creating user");
       }
     } else {
+      setCurrentUser(userExists);
       setIsUserCreated(true);
     }
   } catch (err) {
