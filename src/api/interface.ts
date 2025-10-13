@@ -2,7 +2,6 @@ import { UUIDTypes } from "uuid";
 
 export interface IGame {
   id: UUIDTypes;
-  session_id: UUIDTypes;
   game_number: number;
   master_id: UUIDTypes;
 }
@@ -10,7 +9,6 @@ export interface IGame {
 export interface IUser {
   id: UUIDTypes;
   game_id: UUIDTypes;
-  session_id: UUIDTypes;
   name: string;
   avatar: string;
   voted: boolean;

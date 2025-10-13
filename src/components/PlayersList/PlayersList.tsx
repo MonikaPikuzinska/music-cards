@@ -10,7 +10,7 @@ interface PlayersListProps {
 }
 
 const PlayersList: React.FC<PlayersListProps> = ({ usersList, masterId }) => (
-  <div className="bg-white/50 rounded p-4 mt-4 w-full shadow-lg">
+  <div className="p-4 mt-4 w-full">
     <h2 className="text-lg font-bold text-indigo-400 mb-2">Players:</h2>
     <ul>
       {usersList.map((u) => (

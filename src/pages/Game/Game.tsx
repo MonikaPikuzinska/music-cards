@@ -9,6 +9,7 @@ import CopyLink from "../../components/CopyLink/CopyLink";
 import SpotifyPlayer from "../../components/SpotifyPlayer/SpotifyPlayer";
 import SongsList from "../../components/SongsList/SongsList";
 import { handleUserJoinGame } from "../../services/gameUserService";
+import { supabase } from "../../supabase-client";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -42,7 +43,36 @@ const Game = () => {
       setErrorMessage("Error fetching playlists");
     }
   }, [error]);
+  useEffect(() => {
+    // Subscribe to changes in 'users' table
+    const usersSub = supabase
+      .channel("users-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "users" },
+        (payload) => {
+          console.log("Users table changed:", payload);
+        }
+      )
+      .subscribe();
 
+    // Subscribe to changes in 'game' table
+    const gameSub = supabase
+      .channel("game-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "game" },
+        (payload) => {
+          console.log("Game table changed:", payload);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(usersSub);
+      supabase.removeChannel(gameSub);
+    };
+  }, [id, user]);
   useEffect(() => {
     if (id && user) {
       handleUserJoinGame({
@@ -71,6 +101,7 @@ const Game = () => {
       {isLoading && !isUserCreated ? <p>Loading...</p> : null}
       {errorMessage && <p>{errorMessage}</p>}
       <SongsList
+        currentUser={currentUser}
         tracks={
           data &&
           (data as ISpotifyData).tracks &&

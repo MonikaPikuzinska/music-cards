@@ -2,14 +2,6 @@ import { UUIDTypes } from "uuid";
 import { supabase } from "../supabase-client";
 import { IGame, IUser } from "./interface";
 
-export const createSession = async (id: UUIDTypes) => {
-  const { data, error } = await supabase.from("sessions").insert({ id });
-
-  if (error) throw new Error(error.message);
-  console.log("data", data);
-
-  return data;
-};
 export const createGame = async (game: IGame) => {
   const { data, error } = await supabase.from("games").insert(game);
 
@@ -25,18 +17,24 @@ export const createUser = async (user: IUser) => {
   return data;
 };
 
+export const updateUser = async (userId: string, updates: Partial<IUser>) => {
+  const { data, error } = await supabase
+    .from("users")
+    .update(updates)
+    .eq("id", userId);
+
+  if (error) throw new Error(error.message);
+  return data;
+};
+
 export const createGameBoardDB = async (userData: IUser) => {
-  await createSession(userData.session_id).then(
-    async () =>
-      await createGame({
-        id: userData.game_id,
-        session_id: userData.session_id,
-        game_number: 1,
-        master_id: userData.id,
-      }).then(async () => {
-        await createUser(userData);
-      })
-  );
+  await createGame({
+    id: userData.game_id,
+    game_number: 1,
+    master_id: userData.id,
+  }).then(async () => {
+    await createUser(userData);
+  });
 };
 
 export async function getGameById(gameId: string) {
@@ -52,11 +50,11 @@ export async function getGameById(gameId: string) {
   return data;
 }
 
-export async function getUsersBySessionId(sessionId: string) {
+export async function getUsersByGameId(gameId: string) {
   const { data, error } = await supabase
     .from("users")
     .select("*")
-    .eq("session_id", sessionId);
+    .eq("game_id", gameId);
 
   if (error) {
     throw error;

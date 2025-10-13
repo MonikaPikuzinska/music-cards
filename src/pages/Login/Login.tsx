@@ -9,7 +9,6 @@ import Button from "../../components/Button/Button";
 import getRandomAvatar from "../../utils/getRandomAvatar";
 
 const Login = () => {
-  const [sessionId, setSessionId] = useState<UUIDTypes>();
   const [gameId, setGameId] = useState<UUIDTypes>();
   const [userId, setUserId] = useState<UUIDTypes>();
   const [gameLink, setGameLink] = useState<string>("");
@@ -22,14 +21,13 @@ const Login = () => {
   const { mutate } = useMutation({
     mutationFn: async (data: { userData: IUser }) => {
       await createGameBoardDB(data.userData).then(() =>
-        navigate(`/game/${data.userData.session_id}`)
+        navigate(`/game/${data.userData.game_id}`)
       );
     },
   });
 
   useEffect(() => {
     if (user) {
-      setSessionId(uuid());
       setGameId(uuid());
       setUserId(uuid());
     }
@@ -37,11 +35,10 @@ const Login = () => {
 
   const createGameBoard = () => {
     const randomAvatar = getRandomAvatar();
-    if (user && sessionId && gameId && userId)
+    if (user && gameId && userId)
       mutate({
         userData: {
-          id: userId,
-          session_id: sessionId,
+          id: user.id,
           game_id: gameId,
           name: user ? user.user_metadata?.name : uuid(),
           avatar: user ? randomAvatar.iconName : "",
@@ -72,7 +69,7 @@ const Login = () => {
   return (
     <div className="flex  justify-center items-center flex-col h-100">
       <h1 className="text-indigo-400 text-2xl font-bold">Imagine the music </h1>
-      <div className="w-100 h-80 mt-5 p-5 shadow-lg bg-white/50 rounded">
+      <div className="w-100 h-80 mt-5 p-5">
         {!user ? (
           <div className="flex h-full justify-center items-center flex-col">
             {" "}

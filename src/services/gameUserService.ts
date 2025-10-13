@@ -1,5 +1,5 @@
 import { v4 as uuid, UUIDTypes } from "uuid";
-import { createUser, getGameById, getUsersBySessionId } from "../api/api";
+import { createUser, getGameById, getUsersByGameId } from "../api/api";
 import getRandomAvatar from "../utils/getRandomAvatar";
 import { IUser, IGame } from "../api/interface";
 
@@ -23,7 +23,7 @@ export const handleUserJoinGame = async ({
   setCurrentUser,
 }: HandleUserJoinGameParams) => {
   try {
-    const users: IUser[] = await getUsersBySessionId(id.toString());
+    const users: IUser[] = await getUsersByGameId(id.toString());
     setUsersList(users);
 
     // Fetch game and set masterId if users exist
@@ -52,7 +52,6 @@ export const handleUserJoinGame = async ({
       try {
         const newUser = {
           id: uuid(),
-          session_id: id,
           game_id: users[0]?.game_id,
           name: currentUserName || uuid(),
           avatar: user
