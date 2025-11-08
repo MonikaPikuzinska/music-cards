@@ -1,4 +1,3 @@
-import { UUIDTypes } from "uuid";
 import { supabase } from "../supabase-client";
 import { IGame, IUser } from "./interface";
 
@@ -21,7 +20,8 @@ export const updateUser = async (userId: string, updates: Partial<IUser>) => {
   const { data, error } = await supabase
     .from("users")
     .update(updates)
-    .eq("id", userId);
+    .eq("id", userId)
+    .select();
 
   if (error) throw new Error(error.message);
   return data;

@@ -38,7 +38,7 @@ const Login = () => {
     if (user && gameId && userId)
       mutate({
         userData: {
-          id: user.id,
+          id: userId,
           game_id: gameId,
           name: user ? user.user_metadata?.name : uuid(),
           avatar: user ? randomAvatar.iconName : "",

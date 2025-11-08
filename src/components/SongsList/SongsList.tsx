@@ -1,7 +1,7 @@
 import React from "react";
 import SpotifyPlayer from "../SpotifyPlayer/SpotifyPlayer";
-import { IUser } from "../../api/interface";
 import { updateUser } from "../../api/api";
+import { useAuth } from "../../context/AuthContext";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -13,7 +13,6 @@ interface ISpotifyTrackItem {
 interface SongsListProps {
   tracks: ISpotifyTrackItem[];
   isUserCreated: boolean;
-  currentUser: IUser | null;
   selectedTrack: string | null;
   setSelectedTrack: (id: string | null) => void;
   isSelectDisabled: boolean;
@@ -21,19 +20,21 @@ interface SongsListProps {
 
 const SongsList: React.FC<SongsListProps> = ({
   tracks,
-  currentUser,
   isUserCreated,
   selectedTrack,
   setSelectedTrack,
   isSelectDisabled,
 }) => {
+  const { user } = useAuth();
   const [selectedSong, setSelectedSong] = React.useState<string | null>(null);
+
   const selectSong = () => {
-    updateUser(currentUser?.id?.toString() || "", {
+    updateUser(user?.id?.toString() || "", {
       song_id: selectedSong || "",
       voted: true,
     }).catch((err) => console.error("Error updating user song_id:", err));
   };
+
   return (
     <div className="flex flex-wrap justify-center items-center max-w-9/12">
       {isUserCreated &&

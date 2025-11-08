@@ -36,7 +36,6 @@ const Game = () => {
   const [currentUser, setCurrentUser] = useState<IUser | null>(null);
   const [isButtonSelectDisabled, setIsButtonSelectDisabled] =
     useState<boolean>(false);
-  console.log(data);
 
   useEffect(() => {
     if (error) {
@@ -101,7 +100,6 @@ const Game = () => {
       {isLoading && !isUserCreated ? <p>Loading...</p> : null}
       {errorMessage && <p>{errorMessage}</p>}
       <SongsList
-        currentUser={currentUser}
         tracks={
           data &&
           (data as ISpotifyData).tracks &&
