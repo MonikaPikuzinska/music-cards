@@ -7,7 +7,6 @@ interface HandleUserJoinGameParams {
   id: UUIDTypes | string;
   user: any;
   setUsersList: (users: IUser[]) => void;
-  setMasterId: (id: UUIDTypes) => void;
   setIsUserCreated: (created: boolean) => void;
   setErrorMessage: (msg: string | null) => void;
   setCurrentUser: (user: IUser | null) => void;
@@ -17,7 +16,6 @@ export const handleUserJoinGame = async ({
   id,
   user,
   setUsersList,
-  setMasterId,
   setIsUserCreated,
   setErrorMessage,
   setCurrentUser,
@@ -25,16 +23,6 @@ export const handleUserJoinGame = async ({
   try {
     const users: IUser[] = await getUsersByGameId(id.toString());
     setUsersList(users);
-
-    // Fetch game and set masterId if users exist
-    if (users.length > 0) {
-      try {
-        const game: IGame = await getGameById(users[0].game_id.toString());
-        setMasterId(game.master_id);
-      } catch {
-        setErrorMessage("Error fetching game data");
-      }
-    }
 
     // Check for max players first
     if (users.length >= 6) {
@@ -51,7 +39,7 @@ export const handleUserJoinGame = async ({
     if (!userExists) {
       try {
         const newUser = {
-          id: uuid(),
+          id: user.id,
           game_id: users[0]?.game_id,
           name: currentUserName || uuid(),
           avatar: user
