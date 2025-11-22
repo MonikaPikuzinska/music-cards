@@ -10,6 +10,7 @@ import SongsList from "../../components/SongsList/SongsList";
 import { handleUserJoinGame } from "../../services/gameUserService";
 import { supabase } from "../../supabase-client";
 import { getGameById } from "../../api/api";
+import Timer from "../../components/Timer/Timer";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -170,6 +171,7 @@ const Game = () => {
             </p>
           )
         ) : null}
+        {masterVoted ? <Timer timeSec={120} /> : null}
       </div>
     </div>
   );
