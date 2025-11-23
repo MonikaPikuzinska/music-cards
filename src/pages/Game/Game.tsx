@@ -41,6 +41,9 @@ const Game = () => {
   const [game, setGame] = useState<IGame | null>(null);
 
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
+  const messageStyle =
+    "w-72 rounded-lg bg-indigo-50 text-indigo-600 px-4 py-3 mt-3 text-center font-semibold shadow-sm block text-sm text-indigo-500";
+  // different type of styling message "w-80 border-2 border-indigo-400 rounded-lg bg-white/60 text-indigo-400 px-4 py-2 mt-3 text-center font-medium shadow-sm";
 
   useEffect(() => {
     masterIdRef.current = masterId;
@@ -129,7 +132,7 @@ const Game = () => {
   useEffect(() => {
     setIsButtonSelectDisabled(
       !isUserCreated ||
-        usersList.length < 4 ||
+        // usersList.length < 4 ||
         !selectedTrack ||
         currentUser?.id !== masterId
     );
@@ -160,12 +163,12 @@ const Game = () => {
         <CopyLink />
         {masterVoted ? (
           user?.id === masterId ? (
-            <p>
+            <p className={messageStyle}>
               Players have 2min. to select a song. You can listen some music in
               the mean time.
             </p>
           ) : (
-            <p>
+            <p className={messageStyle}>
               The master selected a song! Now you have 2 minutes to select a
               song.
             </p>

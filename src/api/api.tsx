@@ -33,7 +33,32 @@ export const createGameBoardDB = async (userData: IUser) => {
     game_number: 1,
     master_id: userData.id,
   }).then(async () => {
-    await createUser(userData);
+    // check if user with this id already exists in 'users' table
+    const { data: existingUser, error: fetchError } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", userData.id)
+      .maybeSingle();
+
+    if (fetchError) {
+      // if fetching failed, rethrow to let caller handle it
+      throw fetchError;
+    }
+
+    if (!existingUser) {
+      // only create the user if they don't already exist
+      await createUser(userData);
+    } else {
+      // if user exists, update selected fields to join the new game
+      await updateUser(String(userData.id), {
+        game_id: userData.game_id,
+        avatar: userData.avatar,
+        voted: userData.voted,
+        points: userData.points,
+        song_id: userData.song_id,
+        is_logged: userData.is_logged,
+      });
+    }
   });
 };
 

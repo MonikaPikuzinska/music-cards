@@ -26,7 +26,12 @@ const Timer: React.FC<{ timeSec: number }> = ({ timeSec }) => {
 
   return (
     <div>
-      <h1>Time left: {formatSecondsToMMSS(timeLeft)}</h1>
+      <p className="w-72 rounded-lg bg-indigo-50 text-indigo-600 px-4 py-3 mt-3 text-center font-semibold shadow-sm">
+        <span className="block text-sm text-indigo-500">Time left</span>
+        <span className="block text-2xl font-bold mt-1">
+          {formatSecondsToMMSS(timeLeft)}
+        </span>
+      </p>
     </div>
   );
 };
