@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { icons } from "../../utils/getRandomAvatar";
 import { IUser } from "../../api/interface";
 import { UUIDTypes } from "uuid";
+import { faCheck } from "@fortawesome/free-solid-svg-icons";
 
 interface PlayersListProps {
   usersList: IUser[];
@@ -29,6 +30,9 @@ const PlayersList: React.FC<PlayersListProps> = ({ usersList, masterId }) => (
           <span className="mr-2">{`${u.points} ${
             u.points === 1 ? "point" : "points"
           }`}</span>
+          {u.voted ? (
+            <FontAwesomeIcon className="text-indigo-400" icon={faCheck} />
+          ) : null}
         </li>
       ))}
     </ul>

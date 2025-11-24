@@ -79,11 +79,33 @@ const Game = () => {
         "postgres_changes",
         { event: "*", schema: "public", table: "users" },
         (payload) => {
+          // Keep local usersList in sync with DB changes
+          const newRec = (payload as any)?.new as IUser | null;
+          const oldRec = (payload as any)?.old as IUser | null;
+
+          setUsersList((prev) => {
+            // INSERT
+            if (newRec && !oldRec) {
+              if (prev.some((u) => u.id === newRec.id)) return prev;
+              return [...prev, newRec];
+            }
+            // UPDATE
+            if (newRec && oldRec) {
+              return prev.map((u) => (u.id === newRec.id ? newRec : u));
+            }
+            // DELETE
+            if (!newRec && oldRec) {
+              return prev.filter((u) => u.id !== oldRec.id);
+            }
+            return prev;
+          });
+
+          // react to master voting change
           if (
-            payload?.new &&
-            typeof payload.new === "object" &&
-            "id" in payload.new &&
-            masterIdRef.current === (payload.new as any).id
+            newRec &&
+            typeof newRec === "object" &&
+            "id" in newRec &&
+            masterIdRef.current === (newRec as any).id
           ) {
             setMasterVoted(true);
             console.log("Users table changed:", payload);
