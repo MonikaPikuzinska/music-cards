@@ -39,6 +39,7 @@ const Game = () => {
     useState<boolean>(false);
   const [masterVoted, setMasterVoted] = useState<boolean>(false);
   const [game, setGame] = useState<IGame | null>(null);
+  const [timeIsUp, setTimeIsUp] = useState<boolean>(false);
 
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
   const messageStyle =
@@ -154,7 +155,7 @@ const Game = () => {
   useEffect(() => {
     setIsButtonSelectDisabled(
       !isUserCreated ||
-        // usersList.length < 4 ||
+        usersList.length < 4 ||
         !selectedTrack ||
         currentUser?.id !== masterId
     );
@@ -176,6 +177,7 @@ const Game = () => {
         selectedTrack={selectedTrack}
         setSelectedTrack={setSelectedTrack}
         isSelectDisabled={isButtonSelectDisabled}
+        timeIsUp={timeIsUp}
       />
       <div className="flex flex-col items-center">
         {" "}
@@ -196,7 +198,14 @@ const Game = () => {
             </p>
           )
         ) : null}
-        {masterVoted ? <Timer timeSec={120} /> : null}
+        {masterVoted ? (
+          <Timer
+            timeSec={120}
+            onFinish={() => {
+              setTimeIsUp(true);
+            }}
+          />
+        ) : null}
       </div>
     </div>
   );

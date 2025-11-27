@@ -16,6 +16,7 @@ interface SongsListProps {
   selectedTrack: string | null;
   setSelectedTrack: (id: string | null) => void;
   isSelectDisabled: boolean;
+  timeIsUp?: boolean;
 }
 
 const SongsList: React.FC<SongsListProps> = ({
@@ -24,6 +25,7 @@ const SongsList: React.FC<SongsListProps> = ({
   selectedTrack,
   setSelectedTrack,
   isSelectDisabled,
+  timeIsUp = false,
 }) => {
   const { user } = useAuth();
   const [selectedSong, setSelectedSong] = React.useState<string | null>(null);
@@ -34,6 +36,27 @@ const SongsList: React.FC<SongsListProps> = ({
       voted: true,
     }).catch((err) => console.error("Error updating user song_id:", err));
   };
+
+  // when timer finishes, auto-select a song if none selected
+  React.useEffect(() => {
+    if (!timeIsUp) return;
+
+    let songToSubmit = selectedSong;
+    if (!songToSubmit && tracks && tracks.length > 0) {
+      // pick a random track from available (first 6)
+      const pool = tracks.slice(0, 6);
+      const rand = pool[Math.floor(Math.random() * pool.length)];
+      songToSubmit = rand.id;
+      setSelectedSong(songToSubmit);
+    }
+
+    updateUser(user?.id?.toString() || "", {
+      song_id: songToSubmit || "",
+      voted: true,
+    }).catch((err) =>
+      console.error("Error updating user song_id on time up:", err)
+    );
+  }, [timeIsUp]);
 
   return (
     <div className="flex flex-wrap justify-center items-center max-w-9/12">

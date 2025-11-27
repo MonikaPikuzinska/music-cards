@@ -1,17 +1,34 @@
 import React, { useState, useEffect } from "react";
 
-const Timer: React.FC<{ timeSec: number }> = ({ timeSec }) => {
+const Timer: React.FC<{ timeSec: number; onFinish?: () => void }> = ({
+  timeSec,
+  onFinish,
+}) => {
   const [timeLeft, setTimeLeft] = useState(timeSec);
+  const finishedRef = React.useRef(false);
+
+  // reset when timeSec prop changes
+  useEffect(() => {
+    setTimeLeft(timeSec);
+    finishedRef.current = false;
+  }, [timeSec]);
 
   useEffect(() => {
-    if (timeLeft <= 0) return; // stop timer at 0
+    if (timeLeft <= 0) {
+      // ensure onFinish is called only once
+      if (!finishedRef.current) {
+        finishedRef.current = true;
+        onFinish?.();
+      }
+      return; // stop timer at 0
+    }
 
     const timerId = setInterval(() => {
       setTimeLeft((prevTime) => prevTime - 1);
     }, 1000);
 
     return () => clearInterval(timerId);
-  }, [timeLeft]);
+  }, [timeLeft, onFinish]);
 
   const formatSecondsToMMSS = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
