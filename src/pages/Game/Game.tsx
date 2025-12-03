@@ -8,6 +8,7 @@ import PlayersList from "../../components/PlayersList/PlayersList";
 import CopyLink from "../../components/CopyLink/CopyLink";
 import SongsList from "../../components/SongsList/SongsList";
 import { handleUserJoinGame } from "../../services/gameUserService";
+import { getSpotifyTrack } from "../../services/spotifyService";
 import { supabase } from "../../supabase-client";
 import { getGameById } from "../../api/api";
 import Timer from "../../components/Timer/Timer";
@@ -40,6 +41,11 @@ const Game = () => {
   const [masterVoted, setMasterVoted] = useState<boolean>(false);
   const [game, setGame] = useState<IGame | null>(null);
   const [timeIsUp, setTimeIsUp] = useState<boolean>(false);
+  const [selectedSongsList, setSelectedSongsList] = useState<
+    Array<{ userId: string; track: any }>
+  >([]);
+  const [isSelectingTrackFinished, setIsSelectingTrackFinished] =
+    useState<boolean>(false);
 
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
   const messageStyle =
@@ -80,6 +86,7 @@ const Game = () => {
         "postgres_changes",
         { event: "*", schema: "public", table: "users" },
         (payload) => {
+          console.log("Users table changed:", payload);
           // Keep local usersList in sync with DB changes
           const newRec = (payload as any)?.new as IUser | null;
           const oldRec = (payload as any)?.old as IUser | null;
@@ -109,7 +116,6 @@ const Game = () => {
             masterIdRef.current === (newRec as any).id
           ) {
             setMasterVoted(true);
-            console.log("Users table changed:", payload);
           }
         }
       )
@@ -139,6 +145,61 @@ const Game = () => {
     }
   }, [game, masterId]);
 
+  // when usersList changes, fetch Spotify tracks for users that submitted song_id
+  useEffect(() => {
+    if (!usersList || usersList.length === 0) return;
+    let mounted = true;
+
+    const pending = usersList
+      .filter((u) => u.song_id && u.song_id.length > 0)
+      .filter((u) => !selectedSongsList.some((s) => s.userId === u.id));
+
+    if (pending.length === 0) return;
+
+    // fetch all pending tracks
+    (async () => {
+      try {
+        const promises = pending.map(async (u) => {
+          try {
+            const track = await getSpotifyTrack(u.song_id);
+            return { userId: u.id.toString(), track };
+          } catch (err) {
+            console.error("Failed to fetch track for user", u.id, err);
+            return null;
+          }
+        });
+
+        const results = await Promise.all(promises);
+        if (!mounted) return;
+        const newItems = results.filter((r) => r !== null) as Array<{
+          userId: string;
+          track: any;
+        }>;
+        console.log("newItems", newItems);
+
+        if (newItems.length > 0) {
+          setSelectedSongsList((prev) => [...prev, ...newItems]);
+        }
+      } catch (err) {
+        console.error("Error fetching selected songs:", err);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [usersList]);
+
+  useEffect(() => {
+    const finished =
+      !!masterVoted &&
+      timeIsUp === true &&
+      usersList.length > 0 &&
+      usersList.every((u) => !!u.song_id && u.song_id.length > 0);
+    console.log("finished", finished);
+    setIsSelectingTrackFinished(finished);
+  }, [masterVoted, timeIsUp, usersList]);
+
   useEffect(() => {
     if (id && user) {
       handleUserJoinGame({
@@ -155,7 +216,7 @@ const Game = () => {
   useEffect(() => {
     setIsButtonSelectDisabled(
       !isUserCreated ||
-        usersList.length < 4 ||
+        // usersList.length < 4 ||
         !selectedTrack ||
         currentUser?.id !== masterId
     );
@@ -178,6 +239,7 @@ const Game = () => {
         setSelectedTrack={setSelectedTrack}
         isSelectDisabled={isButtonSelectDisabled}
         timeIsUp={timeIsUp}
+        isSelectingTrackFinished={isSelectingTrackFinished}
       />
       <div className="flex flex-col items-center">
         {" "}

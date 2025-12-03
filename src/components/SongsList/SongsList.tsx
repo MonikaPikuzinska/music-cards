@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import SpotifyPlayer from "../SpotifyPlayer/SpotifyPlayer";
 import { updateUser } from "../../api/api";
 import { useAuth } from "../../context/AuthContext";
+import { supabase } from "../../supabase-client";
+import { IUser } from "../../api/interface";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -17,6 +19,7 @@ interface SongsListProps {
   setSelectedTrack: (id: string | null) => void;
   isSelectDisabled: boolean;
   timeIsUp?: boolean;
+  isSelectingTrackFinished?: boolean;
 }
 
 const SongsList: React.FC<SongsListProps> = ({
@@ -26,9 +29,48 @@ const SongsList: React.FC<SongsListProps> = ({
   setSelectedTrack,
   isSelectDisabled,
   timeIsUp = false,
+  isSelectingTrackFinished = false,
 }) => {
   const { user } = useAuth();
   const [selectedSong, setSelectedSong] = React.useState<string | null>(null);
+  const [usersList, setUsersList] = React.useState<IUser[]>([]);
+
+  useEffect(() => {
+    // Subscribe to changes in 'users' table
+    const usersSub = supabase
+      .channel("users-changes")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "users" },
+        (payload) => {
+          // Keep local usersList in sync with DB changes
+          const newRec = (payload as any)?.new as IUser | null;
+          const oldRec = (payload as any)?.old as IUser | null;
+
+          setUsersList((prev) => {
+            // INSERT
+            if (newRec && !oldRec) {
+              if (prev.some((u) => u.id === newRec.id)) return prev;
+              return [...prev, newRec];
+            }
+            // UPDATE
+            if (newRec && oldRec) {
+              return prev.map((u) => (u.id === newRec.id ? newRec : u));
+            }
+            // DELETE
+            if (!newRec && oldRec) {
+              return prev.filter((u) => u.id !== oldRec.id);
+            }
+            return prev;
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(usersSub);
+    };
+  }, [user]);
 
   const selectSong = () => {
     updateUser(user?.id?.toString() || "", {

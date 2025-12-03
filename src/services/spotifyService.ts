@@ -49,3 +49,8 @@ export const fetchSpotifyRandomSearch = async () => {
     },
   });
 };
+
+// Fetch a single Spotify track by id
+export const getSpotifyTrack = async (trackId: string) => {
+  return spotifyApiRequest(`/tracks/${encodeURIComponent(trackId)}`);
+};
