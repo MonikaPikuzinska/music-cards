@@ -18,7 +18,6 @@ interface SongsListProps {
   selectedTrack: string | null;
   setSelectedTrack: (id: string | null) => void;
   isSelectDisabled: boolean;
-  timeIsUp?: boolean;
   isSelectingTrackFinished?: boolean;
 }
 
@@ -28,7 +27,6 @@ const SongsList: React.FC<SongsListProps> = ({
   selectedTrack,
   setSelectedTrack,
   isSelectDisabled,
-  timeIsUp = false,
   isSelectingTrackFinished = false,
 }) => {
   const { user } = useAuth();
@@ -81,7 +79,7 @@ const SongsList: React.FC<SongsListProps> = ({
 
   // when timer finishes, auto-select a song if none selected
   React.useEffect(() => {
-    if (!timeIsUp) return;
+    if (!isSelectingTrackFinished) return;
 
     let songToSubmit = selectedSong;
     if (!songToSubmit && tracks && tracks.length > 0) {
@@ -98,7 +96,7 @@ const SongsList: React.FC<SongsListProps> = ({
     }).catch((err) =>
       console.error("Error updating user song_id on time up:", err)
     );
-  }, [timeIsUp]);
+  }, [isSelectingTrackFinished]);
 
   return (
     <div className="flex flex-wrap justify-center items-center max-w-9/12">

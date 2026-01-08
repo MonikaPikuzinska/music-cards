@@ -10,7 +10,7 @@ import SongsList from "../../components/SongsList/SongsList";
 import { handleUserJoinGame } from "../../services/gameUserService";
 import { getSpotifyTrack } from "../../services/spotifyService";
 import { supabase } from "../../supabase-client";
-import { getGameById } from "../../api/api";
+import { getGameById, getUsersByGameId } from "../../api/api";
 import Timer from "../../components/Timer/Timer";
 
 interface ISpotifyTrackItem {
@@ -79,36 +79,46 @@ const Game = () => {
   }, [error]);
 
   useEffect(() => {
-    // Subscribe to changes in 'users' table
+    // don't subscribe until we have a game id
+    if (!id) return;
+
+    let mounted = true;
+    // small debounce timer to coalesce bursts of realtime events
+    let refetchTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const fetchFreshUsers = async () => {
+      try {
+        const fresh = await getUsersByGameId(id.toString());
+        if (mounted) setUsersList(fresh || []);
+      } catch (err) {
+        console.error("Failed to refresh users after realtime event", err);
+      }
+    };
+
+    // Subscribe to changes in 'users' table for this specific game_id
     const usersSub = supabase
-      .channel("users-changes")
+      .channel(`users-changes-${id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "users" },
+        // listen to all change types (INSERT/UPDATE/DELETE) and filter server-side by game_id
+        {
+          event: "*",
+          schema: "public",
+          table: "users",
+          filter: `game_id=eq.${id}`,
+        },
         (payload) => {
-          console.log("Users table changed:", payload);
-          // Keep local usersList in sync with DB changes
+          console.log("users change (filtered by game_id):", payload);
+
+          // debounce canonical refetch to avoid many rapid requests
+          if (refetchTimer) clearTimeout(refetchTimer);
+          refetchTimer = setTimeout(() => {
+            fetchFreshUsers();
+            refetchTimer = null;
+          }, 150);
+
+          // if the master user's row was updated and contains a new record, mark masterVoted
           const newRec = (payload as any)?.new as IUser | null;
-          const oldRec = (payload as any)?.old as IUser | null;
-
-          setUsersList((prev) => {
-            // INSERT
-            if (newRec && !oldRec) {
-              if (prev.some((u) => u.id === newRec.id)) return prev;
-              return [...prev, newRec];
-            }
-            // UPDATE
-            if (newRec && oldRec) {
-              return prev.map((u) => (u.id === newRec.id ? newRec : u));
-            }
-            // DELETE
-            if (!newRec && oldRec) {
-              return prev.filter((u) => u.id !== oldRec.id);
-            }
-            return prev;
-          });
-
-          // react to master voting change
           if (
             newRec &&
             typeof newRec === "object" &&
@@ -121,12 +131,12 @@ const Game = () => {
       )
       .subscribe();
 
-    // Subscribe to changes in 'game' table
+    // Optionally watch the game row changes too (filtered by id)
     const gameSub = supabase
-      .channel("game-changes")
+      .channel(`game-changes-${id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "game" },
+        { event: "*", schema: "public", table: "game", filter: `id=eq.${id}` },
         (payload) => {
           console.log("Game table changed:", payload);
         }
@@ -134,10 +144,13 @@ const Game = () => {
       .subscribe();
 
     return () => {
+      mounted = false;
+      if (refetchTimer) clearTimeout(refetchTimer);
       supabase.removeChannel(usersSub);
       supabase.removeChannel(gameSub);
     };
-  }, [id, user]);
+    // only re-subscribe when the id changes
+  }, [id]);
 
   useEffect(() => {
     if (game && !masterId) {
@@ -191,11 +204,7 @@ const Game = () => {
   }, [usersList]);
 
   useEffect(() => {
-    const finished =
-      !!masterVoted &&
-      timeIsUp === true &&
-      usersList.length > 0 &&
-      usersList.every((u) => !!u.song_id && u.song_id.length > 0);
+    const finished = !!masterVoted && timeIsUp === true;
     console.log("finished", finished);
     setIsSelectingTrackFinished(finished);
   }, [masterVoted, timeIsUp, usersList]);
@@ -238,7 +247,6 @@ const Game = () => {
         selectedTrack={selectedTrack}
         setSelectedTrack={setSelectedTrack}
         isSelectDisabled={isButtonSelectDisabled}
-        timeIsUp={timeIsUp}
         isSelectingTrackFinished={isSelectingTrackFinished}
       />
       <div className="flex flex-col items-center">
