@@ -101,7 +101,7 @@ const SongsList: React.FC<SongsListProps> = ({
   return (
     <div className="flex flex-wrap justify-center items-center max-w-9/12">
       {isUserCreated &&
-        tracks.slice(0, 6).map((item) => (
+        tracks.map((item) => (
           <SpotifyPlayer
             key={item.id}
             link={item.external_urls.spotify}

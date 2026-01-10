@@ -44,6 +44,8 @@ const Game = () => {
   const [selectedSongsList, setSelectedSongsList] = useState<
     Array<{ userId: string; track: any }>
   >([]);
+  const [tracks, setTracks] = useState<any[]>([]);
+  const [tracksLoading, setTracksLoading] = useState<boolean>(false);
   const [isSelectingTrackFinished, setIsSelectingTrackFinished] =
     useState<boolean>(false);
 
@@ -55,6 +57,18 @@ const Game = () => {
   useEffect(() => {
     masterIdRef.current = masterId;
   }, [masterId]);
+
+  useEffect(() => {
+    if (data) {
+      setTracks(
+        data &&
+          (data as unknown as ISpotifyData).tracks &&
+          (data as unknown as ISpotifyData).tracks.items
+          ? (data as unknown as ISpotifyData).tracks.items.slice(0, 6)
+          : []
+      );
+    }
+  }, [data]);
 
   useEffect(() => {
     if (!id) return;
@@ -209,6 +223,59 @@ const Game = () => {
     setIsSelectingTrackFinished(finished);
   }, [masterVoted, timeIsUp, usersList]);
 
+  // when selection phase finishes, fetch each user's submitted song (song_id)
+  // and save the resulting Spotify track objects into `tracks`
+  useEffect(() => {
+    if (!isSelectingTrackFinished) return;
+    if (!usersList || usersList.length === 0) {
+      setTracks([]);
+      return;
+    }
+
+    let mounted = true;
+
+    setTracksLoading(true);
+    (async () => {
+      try {
+        const usersWithSong = usersList.filter(
+          (u) => u.song_id && u.song_id.toString().length > 0
+        );
+
+        if (usersWithSong.length === 0) {
+          if (mounted) setTracks([]);
+          return;
+        }
+
+        const promises = usersWithSong.map(async (u) => {
+          try {
+            const track = await getSpotifyTrack(u.song_id);
+            return { userId: u.id, track };
+          } catch (err) {
+            console.error("Failed to fetch track for user", u.id, err);
+            return null;
+          }
+        });
+
+        const results = await Promise.all(promises);
+        if (!mounted) return;
+
+        const fetched = results.filter((r) => r !== null) as any[];
+
+        const fetchedTracks = fetched.map((f) => f.track);
+        setTracks(fetchedTracks);
+        console.log("fetched tracks for finished selection", fetchedTracks);
+      } catch (err) {
+        console.error("Error fetching tracks when selection finished:", err);
+      } finally {
+        if (mounted) setTracksLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [isSelectingTrackFinished]);
+
   useEffect(() => {
     if (id && user) {
       handleUserJoinGame({
@@ -225,7 +292,7 @@ const Game = () => {
   useEffect(() => {
     setIsButtonSelectDisabled(
       !isUserCreated ||
-        // usersList.length < 4 ||
+        usersList.length < 4 ||
         !selectedTrack ||
         currentUser?.id !== masterId
     );
@@ -236,13 +303,7 @@ const Game = () => {
       {isLoading && !isUserCreated ? <p>Loading...</p> : null}
       {errorMessage && <p>{errorMessage}</p>}
       <SongsList
-        tracks={
-          data &&
-          (data as ISpotifyData).tracks &&
-          (data as ISpotifyData).tracks.items
-            ? (data as ISpotifyData).tracks.items
-            : []
-        }
+        tracks={tracks ? tracks : []}
         isUserCreated={isUserCreated}
         selectedTrack={selectedTrack}
         setSelectedTrack={setSelectedTrack}
