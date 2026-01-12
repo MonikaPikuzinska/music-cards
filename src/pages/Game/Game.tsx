@@ -48,6 +48,9 @@ const Game = () => {
   const [tracksLoading, setTracksLoading] = useState<boolean>(false);
   const [isSelectingTrackFinished, setIsSelectingTrackFinished] =
     useState<boolean>(false);
+  const [startVotingForTrack, setIsStartVotingForTrack] =
+    useState<boolean>(false);
+  const [timerKey, setTimerKey] = useState<number>(0);
 
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
   const messageStyle =
@@ -263,6 +266,7 @@ const Game = () => {
 
         const fetchedTracks = fetched.map((f) => f.track);
         setTracks(fetchedTracks);
+        setIsStartVotingForTrack(true);
         console.log("fetched tracks for finished selection", fetchedTracks);
       } catch (err) {
         console.error("Error fetching tracks when selection finished:", err);
@@ -298,6 +302,11 @@ const Game = () => {
     );
   }, [isUserCreated, usersList, currentUser, masterId, selectedTrack]);
 
+  // whenever voting state changes, bump timerKey so Timer remounts and restarts
+  useEffect(() => {
+    setTimerKey((k) => k + 1);
+  }, [startVotingForTrack, masterVoted]);
+
   return (
     <div className="flex flex-row items-start p-4">
       {isLoading && !isUserCreated ? <p>Loading...</p> : null}
@@ -329,8 +338,9 @@ const Game = () => {
             </p>
           )
         ) : null}
-        {masterVoted ? (
+        {startVotingForTrack || masterVoted ? (
           <Timer
+            key={timerKey}
             timeSec={120}
             onFinish={() => {
               setTimeIsUp(true);
