@@ -325,7 +325,19 @@ const Game = () => {
           <PlayersList usersList={usersList} masterId={masterId} />
         )}
         <CopyLink />
-        {masterVoted ? (
+        {startVotingForTrack ? (
+          user?.id === masterId ? (
+            <p className={messageStyle}>
+              Players have 2 minutes to vote for a song. You can listen to some
+              music while they vote.
+            </p>
+          ) : (
+            <p className={messageStyle}>
+              You have 2 minutes to vote for the song you think the master
+              selected.
+            </p>
+          )
+        ) : masterVoted ? (
           user?.id === masterId ? (
             <p className={messageStyle}>
               Players have 2min. to select a song. You can listen some music in
