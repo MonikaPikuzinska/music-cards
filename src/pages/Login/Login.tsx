@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { v4 as uuid, UUIDTypes } from "uuid";
 import { useMutation } from "@tanstack/react-query";
 import { createGameBoardDB } from "../../api/api";
@@ -17,11 +17,14 @@ const Login = () => {
   const { signInWithSpotify, user } = useAuth();
 
   const navigate = useNavigate();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const returnTo = params.get("returnTo") || undefined;
 
   const { mutate } = useMutation({
     mutationFn: async (data: { userData: IUser }) => {
       await createGameBoardDB(data.userData).then(() =>
-        navigate(`/game/${data.userData.game_id}`)
+        navigate(`/game/${data.userData.game_id}`),
       );
     },
   });
@@ -32,6 +35,14 @@ const Login = () => {
       setUserId(uuid());
     }
   }, [user]);
+
+  useEffect(() => {
+    // If user is already logged and returnTo provided, redirect back
+    if (user && returnTo) {
+      // ensure returnTo is an absolute path
+      navigate(returnTo);
+    }
+  }, [user, returnTo, navigate]);
 
   const createGameBoard = () => {
     const randomAvatar = getRandomAvatar();
@@ -73,7 +84,14 @@ const Login = () => {
         {!user ? (
           <div className="flex h-full justify-center items-center flex-col">
             {" "}
-            <Button onClick={signInWithSpotify} label="Log in with Spotify" />
+            <Button
+              onClick={() =>
+                signInWithSpotify(
+                  returnTo ? window.location.origin + returnTo : undefined,
+                )
+              }
+              label="Log in with Spotify"
+            />
           </div>
         ) : (
           <div className="flex h-full justify-center items-center flex-col">

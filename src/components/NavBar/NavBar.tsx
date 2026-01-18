@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useAuth } from "../../context/AuthContext";
+import { useNavigate } from "react-router-dom";
 import Button from "../Button/Button";
 import PopUp from "../PopUp/PopUp";
 import Instruction from "../Instruction/Instruction";
@@ -7,7 +8,7 @@ import Instruction from "../Instruction/Instruction";
 export const NavBar = () => {
   const [openInstruction, setOpenInstruction] = useState(false);
   const { signOut, user } = useAuth();
-
+  const navigate = useNavigate();
 
   return (
     <nav className="fixed bg-gray-100 top-0 w-full">
@@ -28,7 +29,10 @@ export const NavBar = () => {
                   />
                 )}
                 <button
-                  onClick={signOut}
+                  onClick={async () => {
+                    await signOut();
+                    navigate("/login");
+                  }}
                   className="bg-gray-400 mt-3 cursor-pointer text-amber-50 px-3 py-1 rounded mr-5"
                 >
                   Sign Out

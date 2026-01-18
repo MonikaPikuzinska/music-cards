@@ -1,7 +1,7 @@
 import React from "react";
 import RoutesLinks from "./routes/RoutesLinks.tsx";
-import { BrowserRouter as Router } from "react-router";
-import './App.css'
+import { BrowserRouter as Router } from "react-router-dom";
+import "./App.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider } from "./context/AuthContext.tsx";
 

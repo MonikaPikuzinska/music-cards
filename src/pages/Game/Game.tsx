@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useSpotifyRandomSearch } from "../../services/spotifyTanStackService";
-import { useParams } from "react-router";
+import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { UUIDTypes } from "uuid";
 import { IGame, IUser } from "../../api/interface";
@@ -27,7 +27,8 @@ interface ISpotifyData {
 }
 
 const Game = () => {
-  const { user } = useAuth();
+  const { user, authLoading } = useAuth();
+  const navigate = useNavigate();
   const { data, error, isLoading } = useSpotifyRandomSearch();
   const { id } = useParams();
   const [isUserCreated, setIsUserCreated] = useState(false);
@@ -281,6 +282,15 @@ const Game = () => {
   }, [isSelectingTrackFinished]);
 
   useEffect(() => {
+    // If we don't know auth state yet, wait
+    if (!id) return;
+    if (authLoading) return;
+    if (!user) {
+      // redirect to login and include returnTo so user comes back to this game
+      navigate(`/login?returnTo=/game/${id}`);
+      return;
+    }
+
     if (id && user) {
       handleUserJoinGame({
         id: id.toString(),
@@ -291,7 +301,7 @@ const Game = () => {
         setCurrentUser,
       });
     }
-  }, [id, user]);
+  }, [id, user, authLoading, navigate]);
 
   useEffect(() => {
     setIsButtonSelectDisabled(

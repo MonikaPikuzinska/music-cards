@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router";
+import { Route, Routes } from "react-router-dom";
 import Login from "../pages/Login/Login";
 import Game from "../pages/Game/Game";
 import { NavBar } from "../components/NavBar/NavBar";
@@ -10,6 +10,7 @@ function RoutesLinks() {
       <div className="container mx-auto px-4 py-6">
         <Routes>
           <Route path="/" element={<Login />} />
+          <Route path="/login" element={<Login />} />
           <Route path="/game/:id" element={<Game />} />
         </Routes>
       </div>
