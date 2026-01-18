@@ -61,7 +61,7 @@ const SongsList: React.FC<SongsListProps> = ({
             }
             return prev;
           });
-        }
+        },
       )
       .subscribe();
 
@@ -94,7 +94,7 @@ const SongsList: React.FC<SongsListProps> = ({
       song_id: songToSubmit || "",
       voted: true,
     }).catch((err) =>
-      console.error("Error updating user song_id on time up:", err)
+      console.error("Error updating user song_id on time up:", err),
     );
   }, [isSelectingTrackFinished]);
 
@@ -117,10 +117,14 @@ const SongsList: React.FC<SongsListProps> = ({
           onClick={() => selectSong()}
           className={`px-3 py-1 rounded transition-colors ${
             isSelectDisabled
-              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+              ? "bg-gray-300 text-gray-500 cursor-not-allowed opacity-50"
               : "bg-indigo-400 text-white hover:bg-indigo-500"
           }`}
           disabled={isSelectDisabled}
+          aria-label={
+            isSelectDisabled ? "Select song (disabled)" : "Select song"
+          }
+          aria-disabled={isSelectDisabled}
         >
           Select
         </button>

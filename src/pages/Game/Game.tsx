@@ -68,7 +68,7 @@ const Game = () => {
           (data as unknown as ISpotifyData).tracks &&
           (data as unknown as ISpotifyData).tracks.items
           ? (data as unknown as ISpotifyData).tracks.items.slice(0, 6)
-          : []
+          : [],
       );
     }
   }, [data]);
@@ -144,7 +144,7 @@ const Game = () => {
           ) {
             setMasterVoted(true);
           }
-        }
+        },
       )
       .subscribe();
 
@@ -156,7 +156,7 @@ const Game = () => {
         { event: "*", schema: "public", table: "game", filter: `id=eq.${id}` },
         (payload) => {
           console.log("Game table changed:", payload);
-        }
+        },
       )
       .subscribe();
 
@@ -241,7 +241,7 @@ const Game = () => {
     (async () => {
       try {
         const usersWithSong = usersList.filter(
-          (u) => u.song_id && u.song_id.toString().length > 0
+          (u) => u.song_id && u.song_id.toString().length > 0,
         );
 
         if (usersWithSong.length === 0) {
@@ -298,9 +298,17 @@ const Game = () => {
       !isUserCreated ||
         usersList.length < 4 ||
         !selectedTrack ||
-        currentUser?.id !== masterId
+        currentUser?.id !== masterId ||
+        masterVoted,
     );
-  }, [isUserCreated, usersList, currentUser, masterId, selectedTrack]);
+  }, [
+    isUserCreated,
+    usersList,
+    currentUser,
+    masterId,
+    selectedTrack,
+    masterVoted,
+  ]);
 
   // whenever voting state changes, bump timerKey so Timer remounts and restarts
   useEffect(() => {
