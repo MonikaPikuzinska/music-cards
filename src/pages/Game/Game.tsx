@@ -304,13 +304,20 @@ const Game = () => {
   }, [id, user, authLoading, navigate]);
 
   useEffect(() => {
-    setIsButtonSelectDisabled(
-      !isUserCreated ||
-        usersList.length < 4 ||
-        !selectedTrack ||
-        currentUser?.id !== masterId ||
-        masterVoted,
-    );
+    // Button logic:
+    // - If user not created or no selected track -> disabled
+    // - If current user is the master: disable after master has voted
+    // - If current user is NOT the master: enable only after master has voted
+    if (!isUserCreated || !selectedTrack || usersList.length < 4) {
+      setIsButtonSelectDisabled(true);
+      return;
+    }
+
+    if (currentUser?.id === masterId) {
+      setIsButtonSelectDisabled(!!masterVoted);
+    } else {
+      setIsButtonSelectDisabled(!masterVoted);
+    }
   }, [
     isUserCreated,
     usersList,

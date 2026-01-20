@@ -1,7 +1,12 @@
 import { v4 as uuid, UUIDTypes } from "uuid";
-import { createUser, getGameById, getUsersByGameId } from "../api/api";
+import {
+  createUser,
+  getUsersByGameId,
+  updateUser,
+} from "../api/api";
+import { supabase } from "../supabase-client";
 import getRandomAvatar from "../utils/getRandomAvatar";
-import { IUser, IGame } from "../api/interface";
+import { IUser } from "../api/interface";
 
 interface HandleUserJoinGameParams {
   id: UUIDTypes | string;
@@ -31,10 +36,46 @@ export const handleUserJoinGame = async ({
       return;
     }
 
-    // Check if current user already exists
+    // Check if current user already exists globally (by supabase id)
     const currentUserName =
       user.user_metadata?.full_name || user.user_metadata?.name || "";
-    const userExists = users.find((u) => u.name === currentUserName);
+
+    // First check if a user with this supabase id exists anywhere in the table
+    const { data: existingUserGlobal, error: existingFetchErr } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (existingFetchErr) {
+      setErrorMessage("Error checking existing user");
+      return;
+    }
+
+    if (existingUserGlobal) {
+      // If the user exists but may belong to another game, update the row to join this game
+      try {
+        await updateUser(String(user.id), {
+          game_id: id,
+          avatar: existingUserGlobal.avatar || (user ? uuid() : ""),
+          voted: false,
+          points: existingUserGlobal.points ?? 0,
+          song_id: "",
+          is_logged: true,
+        });
+        const merged = { ...existingUserGlobal, game_id: id, is_logged: true };
+        setCurrentUser(merged);
+        setIsUserCreated(true);
+        return;
+      } catch (err) {
+        setErrorMessage("Error updating existing user");
+        return;
+      }
+    }
+
+    // If no global existing user, check by name among current game's users
+    const userExistsByName = users.find((u) => u.name === currentUserName);
+    const userExists = userExistsByName;
 
     if (!userExists) {
       try {
