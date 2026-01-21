@@ -10,6 +10,21 @@ const getSpotifyAccessToken = async (): Promise<string | null> => {
   return data.session.provider_token || null;
 };
 
+// Check whether the spotify provider token exists and is not expired
+export const isSpotifySessionValid = async (): Promise<boolean> => {
+  const { data, error } = await supabase.auth.getSession();
+  if (error || !data.session) return false;
+  const session: any = data.session;
+  const providerToken = session.provider_token;
+  const expiresAt = session.expires_at; // seconds since epoch
+  if (!providerToken) return false;
+  if (typeof expiresAt === "number") {
+    const now = Math.floor(Date.now() / 1000);
+    if (expiresAt <= now) return false;
+  }
+  return true;
+};
+
 // Generic Spotify API request helper
 const spotifyApiRequest = async <T = any>(
   endpoint: string,
@@ -17,7 +32,7 @@ const spotifyApiRequest = async <T = any>(
     method?: "GET" | "POST" | "PUT" | "DELETE";
     params?: any;
     data?: any;
-  } = {}
+  } = {},
 ): Promise<T> => {
   const accessToken = await getSpotifyAccessToken();
 

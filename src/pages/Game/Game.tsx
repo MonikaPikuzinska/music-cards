@@ -8,7 +8,10 @@ import PlayersList from "../../components/PlayersList/PlayersList";
 import CopyLink from "../../components/CopyLink/CopyLink";
 import SongsList from "../../components/SongsList/SongsList";
 import { handleUserJoinGame } from "../../services/gameUserService";
-import { getSpotifyTrack } from "../../services/spotifyService";
+import {
+  getSpotifyTrack,
+  isSpotifySessionValid,
+} from "../../services/spotifyService";
 import { supabase } from "../../supabase-client";
 import { getGameById, getUsersByGameId } from "../../api/api";
 import Timer from "../../components/Timer/Timer";
@@ -27,7 +30,7 @@ interface ISpotifyData {
 }
 
 const Game = () => {
-  const { user, authLoading } = useAuth();
+  const { user, authLoading, signOut } = useAuth();
   const navigate = useNavigate();
   const { data, error, isLoading } = useSpotifyRandomSearch();
   const { id } = useParams();
@@ -286,21 +289,35 @@ const Game = () => {
     if (!id) return;
     if (authLoading) return;
     if (!user) {
+      // If already on the login page (e.g. user clicked Sign Out and NavBar
+      // already navigated to /login), don't add a returnTo param — avoid
+      // racing redirects that append ?returnTo=/game/...
+      if (window.location.pathname === "/login") return;
+
       // redirect to login and include returnTo so user comes back to this game
       navigate(`/login?returnTo=/game/${id}`);
       return;
     }
+    (async () => {
+      // Verify spotify session validity; if invalid, sign out and redirect to login
+      const valid = await isSpotifySessionValid();
+      if (!valid) {
+        await signOut();
+        navigate(`/login?returnTo=/game/${id}`);
+        return;
+      }
 
-    if (id && user) {
-      handleUserJoinGame({
-        id: id.toString(),
-        user,
-        setUsersList,
-        setIsUserCreated,
-        setErrorMessage,
-        setCurrentUser,
-      });
-    }
+      if (id && user) {
+        handleUserJoinGame({
+          id: id.toString(),
+          user,
+          setUsersList,
+          setIsUserCreated,
+          setErrorMessage,
+          setCurrentUser,
+        });
+      }
+    })();
   }, [id, user, authLoading, navigate]);
 
   useEffect(() => {
