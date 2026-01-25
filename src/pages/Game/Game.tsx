@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useSpotifyRandomSearch } from "../../services/spotifyTanStackService";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { UUIDTypes } from "uuid";
 import { IGame, IUser } from "../../api/interface";
 import PlayersList from "../../components/PlayersList/PlayersList";
@@ -34,9 +35,17 @@ const Game = () => {
   const navigate = useNavigate();
   const { data, error, isLoading } = useSpotifyRandomSearch();
   const { id } = useParams();
+  const queryClient = useQueryClient();
+  const { data: usersList = [], refetch: refetchUsers } = useQuery<
+    IUser[],
+    Error
+  >({
+    queryKey: ["users", id],
+    queryFn: async () => (id ? await getUsersByGameId(id.toString()) : []),
+    enabled: !!id,
+  });
   const [isUserCreated, setIsUserCreated] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [usersList, setUsersList] = useState<IUser[]>([]);
   const [masterId, setMasterId] = useState<UUIDTypes | null>(null);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<IUser | null>(null);
@@ -107,12 +116,11 @@ const Game = () => {
     // small debounce timer to coalesce bursts of realtime events
     let refetchTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const fetchFreshUsers = async () => {
+    const invalidateUsers = async () => {
       try {
-        const fresh = await getUsersByGameId(id.toString());
-        if (mounted) setUsersList(fresh || []);
+        await queryClient.invalidateQueries({ queryKey: ["users", id] });
       } catch (err) {
-        console.error("Failed to refresh users after realtime event", err);
+        console.error("Failed to invalidate users after realtime event", err);
       }
     };
 
@@ -131,20 +139,21 @@ const Game = () => {
         (payload) => {
           console.log("users change (filtered by game_id):", payload);
 
-          // debounce canonical refetch to avoid many rapid requests
+          // debounce canonical invalidation to avoid many rapid requests
           if (refetchTimer) clearTimeout(refetchTimer);
           refetchTimer = setTimeout(() => {
-            fetchFreshUsers();
+            invalidateUsers();
             refetchTimer = null;
           }, 150);
 
-          // if the master user's row was updated and contains a new record, mark masterVoted
+          // if the master user's row was updated and the master has voted, mark masterVoted
           const newRec = (payload as any)?.new as IUser | null;
           if (
             newRec &&
             typeof newRec === "object" &&
             "id" in newRec &&
-            masterIdRef.current === (newRec as any).id
+            masterIdRef.current === (newRec as any).id &&
+            !!(newRec as any).voted
           ) {
             setMasterVoted(true);
           }
@@ -289,9 +298,6 @@ const Game = () => {
     if (!id) return;
     if (authLoading) return;
     if (!user) {
-      // If already on the login page (e.g. user clicked Sign Out and NavBar
-      // already navigated to /login), don't add a returnTo param — avoid
-      // racing redirects that append ?returnTo=/game/...
       if (window.location.pathname === "/login") return;
 
       // redirect to login and include returnTo so user comes back to this game
@@ -311,7 +317,8 @@ const Game = () => {
         handleUserJoinGame({
           id: id.toString(),
           user,
-          setUsersList,
+          setUsersList: (users: IUser[]) =>
+            queryClient.setQueryData(["users", id], users),
           setIsUserCreated,
           setErrorMessage,
           setCurrentUser,
@@ -322,10 +329,10 @@ const Game = () => {
 
   useEffect(() => {
     // Button logic:
-    // - If user not created or no selected track -> disabled
+    // - If there are less than 4 players, disable
     // - If current user is the master: disable after master has voted
     // - If current user is NOT the master: enable only after master has voted
-    if (!isUserCreated || !selectedTrack || usersList.length < 4) {
+    if (usersList.length < 4) {
       setIsButtonSelectDisabled(true);
       return;
     }

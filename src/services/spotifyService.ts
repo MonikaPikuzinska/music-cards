@@ -2,11 +2,33 @@ import axios from "axios";
 import { supabase } from "../supabase-client";
 import { getRandomSearch } from "../utils/getRandomSearch";
 
+let onSpotifyUnauthorized: (() => void) | null = null;
+
+export const setOnSpotifyUnauthorized = (cb: (() => void) | null) => {
+  onSpotifyUnauthorized = cb;
+};
+
+const spotifyAxios = axios.create({ baseURL: "https://api.spotify.com/v1" });
+
+spotifyAxios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    if (status === 401 && typeof onSpotifyUnauthorized === "function") {
+      try {
+        onSpotifyUnauthorized();
+      } catch (err) {
+        console.error("Error in onSpotifyUnauthorized handler:", err);
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+
 // Helper to get the Spotify access token from Supabase cookie
 const getSpotifyAccessToken = async (): Promise<string | null> => {
   const { data, error } = await supabase.auth.getSession();
   if (error || !data.session) return null;
-  // Assuming the access token is stored in the session's provider_token
   return data.session.provider_token || null;
 };
 
@@ -16,7 +38,7 @@ export const isSpotifySessionValid = async (): Promise<boolean> => {
   if (error || !data.session) return false;
   const session: any = data.session;
   const providerToken = session.provider_token;
-  const expiresAt = session.expires_at; // seconds since epoch
+  const expiresAt = session.expires_at;
   if (!providerToken) return false;
   if (typeof expiresAt === "number") {
     const now = Math.floor(Date.now() / 1000);
@@ -38,8 +60,8 @@ const spotifyApiRequest = async <T = any>(
 
   if (!accessToken) throw new Error("No Spotify access token found");
   const { method = "GET", params, data } = options;
-  const response = await axios({
-    url: `https://api.spotify.com/v1${endpoint}`,
+  const response = await spotifyAxios.request({
+    url: endpoint,
     method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
