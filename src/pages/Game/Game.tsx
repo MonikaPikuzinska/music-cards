@@ -74,17 +74,16 @@ const Game = () => {
     masterIdRef.current = masterId;
   }, [masterId]);
 
+  // Initial list of random Spotify tracks:
+  // - load once when page opens (see query options in useSpotifyRandomSearch)
+  // - do NOT overwrite tracks after the selection phase has finished
   useEffect(() => {
-    if (data) {
-      setTracks(
-        data &&
-          (data as unknown as ISpotifyData).tracks &&
-          (data as unknown as ISpotifyData).tracks.items
-          ? (data as unknown as ISpotifyData).tracks.items.slice(0, 6)
-          : [],
-      );
-    }
-  }, [data]);
+    if (!data || isSelectingTrackFinished) return;
+
+    const typed = data as unknown as ISpotifyData | null;
+    const items = typed?.tracks?.items ?? [];
+    setTracks(items.slice(0, 6));
+  }, [data, isSelectingTrackFinished]);
 
   useEffect(() => {
     if (!id) return;
@@ -252,6 +251,8 @@ const Game = () => {
 
     setTracksLoading(true);
     (async () => {
+      console.log('tracks',tracks,selectedSongsList,isSelectingTrackFinished);
+      
       try {
         const usersWithSong = usersList.filter(
           (u) => u.song_id && u.song_id.toString().length > 0,
