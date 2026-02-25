@@ -53,9 +53,11 @@ export const createGameBoardDB = async (userData: IUser) => {
       await updateUser(String(userData.id), {
         game_id: userData.game_id,
         avatar: userData.avatar,
-        voted: userData.voted,
+        my_song_voted: userData.my_song_voted,
+        master_song_voted: userData.master_song_voted,
         points: userData.points,
-        song_id: userData.song_id,
+        my_song_id: userData.my_song_id,
+        master_song_id: userData.master_song_id,
         is_logged: userData.is_logged,
       });
     }

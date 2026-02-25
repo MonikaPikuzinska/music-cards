@@ -18,6 +18,7 @@ interface SongsListProps {
   setSelectedTrack: (id: string | null) => void;
   isSelectDisabled: boolean;
   isSelectingTrackFinished?: boolean;
+  timeIsUp?: boolean;
 }
 
 const SongsList: React.FC<SongsListProps> = ({
@@ -27,18 +28,19 @@ const SongsList: React.FC<SongsListProps> = ({
   setSelectedTrack,
   isSelectDisabled,
   isSelectingTrackFinished = false,
+  timeIsUp = false,
 }) => {
   const { user } = useAuth();
   const [selectedSong, setSelectedSong] = React.useState<string | null>(null);
 
   const selectSong = () => {
     updateUser(user?.id?.toString() || "", {
-      song_id: selectedSong || "",
-      voted: true,
-    }).catch((err) => console.error("Error updating user song_id:", err));
+      my_song_id: selectedSong || "",
+      my_song_voted: true,
+    }).catch((err) => console.error("Error updating user my_song_id:", err));
   };
 
-  // when timer finishes, auto-select a song if none selected
+  // when selection phase finishes, auto-select a song if none selected
   React.useEffect(() => {
     if (!isSelectingTrackFinished) return;
 
@@ -52,12 +54,19 @@ const SongsList: React.FC<SongsListProps> = ({
     }
 
     updateUser(user?.id?.toString() || "", {
-      song_id: songToSubmit || "",
-      voted: true,
+      my_song_id: songToSubmit || "",
+      my_song_voted: true,
     }).catch((err) =>
-      console.error("Error updating user song_id on time up:", err),
+      console.error("Error updating user my_song_id on time up:", err),
     );
   }, [isSelectingTrackFinished]);
+
+  // when global timer is up in Game, clear current selection visually
+  useEffect(() => {
+    if (!timeIsUp) return;
+    setSelectedTrack(null);
+    setSelectedSong(null);
+  }, [timeIsUp, setSelectedTrack]);
 
   return (
     <div className="flex flex-wrap justify-center items-center max-w-9/12">

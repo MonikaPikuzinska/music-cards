@@ -11,8 +11,10 @@ export interface IUser {
   game_id: UUIDTypes;
   name: string;
   avatar: string;
-  voted: boolean;
+  my_song_voted: boolean;
+  master_song_voted: boolean;
   points: number;
-  song_id: string;
+  my_song_id: string;
+  master_song_id: string;
   is_logged: boolean;
 }

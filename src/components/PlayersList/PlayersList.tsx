@@ -8,9 +8,14 @@ import { faCheck } from "@fortawesome/free-solid-svg-icons";
 interface PlayersListProps {
   usersList: IUser[];
   masterId: UUIDTypes | null;
+  timeIsUp: boolean;
 }
 
-const PlayersList: React.FC<PlayersListProps> = ({ usersList, masterId }) => (
+const PlayersList: React.FC<PlayersListProps> = ({
+  usersList,
+  masterId,
+  timeIsUp,
+}) => (
   <div className="p-4 mt-4 w-full">
     <h2 className="text-lg font-bold text-indigo-400 mb-2">Players:</h2>
     <ul>
@@ -30,7 +35,7 @@ const PlayersList: React.FC<PlayersListProps> = ({ usersList, masterId }) => (
           <span className="mr-2">{`${u.points} ${
             u.points === 1 ? "point" : "points"
           }`}</span>
-          {u.voted ? (
+          {(timeIsUp ? u.master_song_voted : u.my_song_voted) ? (
             <FontAwesomeIcon className="text-indigo-400" icon={faCheck} />
           ) : null}
         </li>

@@ -53,9 +53,11 @@ const Login = () => {
           game_id: gameId,
           name: user ? user.user_metadata?.name : uuid(),
           avatar: user ? randomAvatar.iconName : "",
-          voted: false,
+          my_song_voted: false,
+          master_song_voted: false,
           points: 0,
-          song_id: "",
+          my_song_id: "",
+          master_song_id: "",
           is_logged: true,
         },
       });

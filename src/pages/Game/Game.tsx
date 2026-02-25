@@ -152,7 +152,7 @@ const Game = () => {
             typeof newRec === "object" &&
             "id" in newRec &&
             masterIdRef.current === (newRec as any).id &&
-            !!(newRec as any).voted
+            !!(newRec as any).my_song_voted
           ) {
             setMasterVoted(true);
           }
@@ -187,13 +187,13 @@ const Game = () => {
     }
   }, [game, masterId]);
 
-  // when usersList changes, fetch Spotify tracks for users that submitted song_id
+  // when usersList changes, fetch Spotify tracks for users that submitted my_song_id
   useEffect(() => {
     if (!usersList || usersList.length === 0) return;
     let mounted = true;
 
     const pending = usersList
-      .filter((u) => u.song_id && u.song_id.length > 0)
+      .filter((u) => u.my_song_id && u.my_song_id.length > 0)
       .filter((u) => !selectedSongsList.some((s) => s.userId === u.id));
 
     if (pending.length === 0) return;
@@ -203,7 +203,7 @@ const Game = () => {
       try {
         const promises = pending.map(async (u) => {
           try {
-            const track = await getSpotifyTrack(u.song_id);
+            const track = await getSpotifyTrack(u.my_song_id);
             return { userId: u.id.toString(), track };
           } catch (err) {
             console.error("Failed to fetch track for user", u.id, err);
@@ -238,7 +238,7 @@ const Game = () => {
     setIsSelectingTrackFinished(finished);
   }, [masterVoted, timeIsUp, usersList]);
 
-  // when selection phase finishes, fetch each user's submitted song (song_id)
+  // when selection phase finishes, fetch each user's submitted song (my_song_id)
   // and save the resulting Spotify track objects into `tracks`
   useEffect(() => {
     if (!isSelectingTrackFinished) return;
@@ -251,11 +251,25 @@ const Game = () => {
 
     setTracksLoading(true);
     (async () => {
-      console.log('tracks',tracks,selectedSongsList,isSelectingTrackFinished);
-      
+      console.log("tracks", tracks, selectedSongsList, isSelectingTrackFinished);
+
       try {
+        // When selection phase is finished and we are about to show the list
+        // of songs based on my_song_id, reset `my_song_voted` to false for all users
+        // in this game so they can vote in the next phase.
+        if (id) {
+          const { error: voteResetError } = await supabase
+            .from("users")
+            .update({ my_song_voted: false, my_song_id: "" })
+            .eq("game_id", id.toString());
+
+          if (voteResetError) {
+            console.error("Failed to reset voted flags for users", voteResetError);
+          }
+        }
+
         const usersWithSong = usersList.filter(
-          (u) => u.song_id && u.song_id.toString().length > 0,
+          (u) => u.my_song_id && u.my_song_id.toString().length > 0,
         );
 
         if (usersWithSong.length === 0) {
@@ -265,7 +279,7 @@ const Game = () => {
 
         const promises = usersWithSong.map(async (u) => {
           try {
-            const track = await getSpotifyTrack(u.song_id);
+            const track = await getSpotifyTrack(u.my_song_id);
             return { userId: u.id, track };
           } catch (err) {
             console.error("Failed to fetch track for user", u.id, err);
@@ -368,11 +382,16 @@ const Game = () => {
         setSelectedTrack={setSelectedTrack}
         isSelectDisabled={isButtonSelectDisabled}
         isSelectingTrackFinished={isSelectingTrackFinished}
+        timeIsUp={timeIsUp}
       />
       <div className="flex flex-col items-center">
         {" "}
         {usersList.length > 0 && (
-          <PlayersList usersList={usersList} masterId={masterId} />
+          <PlayersList
+            usersList={usersList}
+            masterId={masterId}
+            timeIsUp={timeIsUp}
+          />
         )}
         <CopyLink />
         {startVotingForTrack ? (

@@ -58,9 +58,11 @@ export const handleUserJoinGame = async ({
         await updateUser(String(user.id), {
           game_id: id,
           avatar: existingUserGlobal.avatar || (user ? uuid() : ""),
-          voted: false,
+          my_song_voted: false,
+          master_song_voted: false,
           points: existingUserGlobal.points ?? 0,
-          song_id: "",
+          my_song_id: "",
+          master_song_id: "",
           is_logged: true,
         });
         const merged = { ...existingUserGlobal, game_id: id, is_logged: true };
@@ -86,9 +88,11 @@ export const handleUserJoinGame = async ({
           avatar: user
             ? getRandomAvatar(users.map((u) => u.avatar)).iconName
             : "",
-          voted: false,
+          my_song_voted: false,
+          master_song_voted: false,
           points: 0,
-          song_id: "",
+          my_song_id: "",
+          master_song_id: "",
           is_logged: true,
         };
         setCurrentUser(newUser);
