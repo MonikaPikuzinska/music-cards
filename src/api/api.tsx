@@ -1,5 +1,5 @@
 import { supabase } from "../supabase-client";
-import { IGame, IUser } from "./interface";
+import { GameState, IGame, IUser } from "./interface";
 
 export const createGame = async (game: IGame) => {
   const { data, error } = await supabase.from("games").insert(game);
@@ -32,6 +32,7 @@ export const createGameBoardDB = async (userData: IUser) => {
     id: userData.game_id,
     game_number: 1,
     master_id: userData.id,
+    state: GameState.MASTER_SELECTS,
   }).then(async () => {
     // check if user with this id already exists in 'users' table
     const { data: existingUser, error: fetchError } = await supabase

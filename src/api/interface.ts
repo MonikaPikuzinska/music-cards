@@ -1,9 +1,17 @@
 import { UUIDTypes } from "uuid";
 
+export enum GameState {
+  MASTER_SELECTS = "master_selects",
+  USERS_SELECT = "users_select",
+  USERS_VOTE = "users_vote",
+  FINAL = "final",
+}
+
 export interface IGame {
   id: UUIDTypes;
   game_number: number;
   master_id: UUIDTypes;
+  state: GameState;
 }
 
 export interface IUser {

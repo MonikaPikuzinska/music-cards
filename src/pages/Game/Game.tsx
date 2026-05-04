@@ -4,7 +4,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { UUIDTypes } from "uuid";
-import { IGame, IUser } from "../../api/interface";
+import { GameState, IGame, IUser } from "../../api/interface";
 import PlayersList from "../../components/PlayersList/PlayersList";
 import CopyLink from "../../components/CopyLink/CopyLink";
 import SongsList from "../../components/SongsList/SongsList";
@@ -64,6 +64,8 @@ const Game = () => {
   const [startVotingForTrack, setIsStartVotingForTrack] =
     useState<boolean>(false);
   const [timerKey, setTimerKey] = useState<number>(0);
+  const isUsersSelectState = game?.state === GameState.USERS_SELECT;
+  const isUsersVoteState = game?.state === GameState.USERS_VOTE;
 
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
   const messageStyle =
@@ -165,9 +167,11 @@ const Game = () => {
       .channel(`game-changes-${id}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "game", filter: `id=eq.${id}` },
+        { event: "*", schema: "public", table: "games", filter: `id=eq.${id}` },
         (payload) => {
           console.log("Game table changed:", payload);
+          const newRec = (payload as any)?.new as IGame | null;
+          if (newRec) setGame(newRec);
         },
       )
       .subscribe();
@@ -237,6 +241,63 @@ const Game = () => {
     console.log("finished", finished);
     setIsSelectingTrackFinished(finished);
   }, [masterVoted, timeIsUp, usersList]);
+
+  useEffect(() => {
+    if (!id || !game?.state) return;
+
+    const nonMasterUsers = usersList.filter((u) => u.id !== masterId);
+
+    const moveToState = async (nextState: GameState) => {
+      const { error } = await supabase
+        .from("games")
+        .update({ state: nextState })
+        .eq("id", id.toString());
+
+      if (error) {
+        console.error(`Failed to update game state to ${nextState}`, error);
+        return;
+      }
+
+      setGame((prev) => (prev ? { ...prev, state: nextState } : prev));
+    };
+
+    if (game.state === GameState.MASTER_SELECTS) {
+      if (masterVoted) {
+        void moveToState(GameState.USERS_SELECT);
+      }
+      return;
+    }
+
+    if (game.state === GameState.USERS_SELECT) {
+      const allNonMasterSongsSelected =
+        nonMasterUsers.length > 0 &&
+        nonMasterUsers.every(
+          (u) =>
+            typeof u.my_song_id === "string" && u.my_song_id.trim().length > 0,
+        );
+
+      if (timeIsUp && allNonMasterSongsSelected) {
+        void moveToState(GameState.USERS_VOTE);
+      }
+      return;
+    }
+
+    if (game.state === GameState.USERS_VOTE) {
+      const allNonMasterUsersVoted =
+        nonMasterUsers.length > 0 &&
+        nonMasterUsers.every((u) => u.master_song_voted === true);
+
+      if (allNonMasterUsersVoted) {
+        void moveToState(GameState.FINAL);
+      }
+    }
+  }, [id, game?.state, masterVoted, timeIsUp, usersList, masterId]);
+
+  useEffect(() => {
+    if (isUsersSelectState || isUsersVoteState) {
+      setTimeIsUp(false);
+    }
+  }, [isUsersSelectState, isUsersVoteState]);
 
   // when selection phase finishes, fetch each user's submitted song (my_song_id)
   // and save the resulting Spotify track objects into `tracks`
@@ -347,10 +408,10 @@ const Game = () => {
     // - If there are less than 4 players, disable
     // - If current user is the master: disable after master has voted
     // - If current user is NOT the master: enable only after master has voted
-    if (usersList.length < 4) {
-      setIsButtonSelectDisabled(true);
-      return;
-    }
+    // if (usersList.length < 4) {
+    //   setIsButtonSelectDisabled(true);
+    //   return;
+    // }
 
     if (currentUser?.id === masterId) {
       setIsButtonSelectDisabled(!!masterVoted);
@@ -369,7 +430,7 @@ const Game = () => {
   // whenever voting state changes, bump timerKey so Timer remounts and restarts
   useEffect(() => {
     setTimerKey((k) => k + 1);
-  }, [startVotingForTrack, masterVoted]);
+  }, [startVotingForTrack, isUsersSelectState, isUsersVoteState]);
 
   return (
     <div className="flex flex-row items-start p-4">
@@ -383,6 +444,9 @@ const Game = () => {
         isSelectDisabled={isButtonSelectDisabled}
         isSelectingTrackFinished={isSelectingTrackFinished}
         timeIsUp={timeIsUp}
+        startVotingForTrack={startVotingForTrack}
+        masterId={masterId}
+        currentUser={currentUser}
       />
       <div className="flex flex-col items-center">
         {" "}
@@ -419,7 +483,7 @@ const Game = () => {
             </p>
           )
         ) : null}
-        {startVotingForTrack || masterVoted ? (
+        {isUsersSelectState || isUsersVoteState ? (
           <Timer
             key={timerKey}
             timeSec={120}
