@@ -246,6 +246,10 @@ const Game = () => {
     if (!id || !game?.state) return;
 
     const nonMasterUsers = usersList.filter((u) => u.id !== masterId);
+    const randomTrackIdFromPool = (pool: Array<{ id: string }>) => {
+      if (!pool.length) return "";
+      return pool[Math.floor(Math.random() * pool.length)]?.id ?? "";
+    };
 
     const moveToState = async (nextState: GameState) => {
       const { error } = await supabase
@@ -269,6 +273,33 @@ const Game = () => {
     }
 
     if (game.state === GameState.USERS_SELECT) {
+      const assignMissingMySongIdsOnTimeout = async () => {
+        if (!timeIsUp) return;
+        if (!currentUser || currentUser.id === masterId) return;
+        if (
+          typeof currentUser.my_song_id === "string" &&
+          currentUser.my_song_id.trim().length > 0
+        ) {
+          return;
+        }
+
+        const selectionPool = tracks.slice(0, 6).filter((t) => !!t?.id);
+        if (selectionPool.length === 0) return;
+
+        const { error } = await supabase
+          .from("users")
+          .update({
+            my_song_id: randomTrackIdFromPool(selectionPool),
+            my_song_voted: true,
+          })
+          .eq("id", currentUser.id.toString());
+
+        if (error) {
+          console.error("Failed to auto-assign my_song_id on timeout", error);
+        }
+      };
+      void assignMissingMySongIdsOnTimeout();
+
       const allNonMasterSongsSelected =
         nonMasterUsers.length > 0 &&
         nonMasterUsers.every(
@@ -283,6 +314,36 @@ const Game = () => {
     }
 
     if (game.state === GameState.USERS_VOTE) {
+      const assignMissingMasterSongIdsOnTimeout = async () => {
+        if (!timeIsUp) return;
+        if (!currentUser || currentUser.id === masterId) return;
+        if (
+          typeof currentUser.master_song_id === "string" &&
+          currentUser.master_song_id.trim().length > 0
+        ) {
+          return;
+        }
+
+        const votePool = tracks.filter((t) => !!t?.id);
+        if (votePool.length === 0) return;
+
+        const { error } = await supabase
+          .from("users")
+          .update({
+            master_song_id: randomTrackIdFromPool(votePool),
+            master_song_voted: true,
+          })
+          .eq("id", currentUser.id.toString());
+
+        if (error) {
+          console.error(
+            "Failed to auto-assign master_song_id on timeout",
+            error,
+          );
+        }
+      };
+      void assignMissingMasterSongIdsOnTimeout();
+
       const allNonMasterUsersVoted =
         nonMasterUsers.length > 0 &&
         nonMasterUsers.every((u) => u.master_song_voted === true);
@@ -291,7 +352,16 @@ const Game = () => {
         void moveToState(GameState.FINAL);
       }
     }
-  }, [id, game?.state, masterVoted, timeIsUp, usersList, masterId]);
+  }, [
+    id,
+    game?.state,
+    masterVoted,
+    timeIsUp,
+    usersList,
+    masterId,
+    tracks,
+    currentUser,
+  ]);
 
   useEffect(() => {
     if (isUsersSelectState || isUsersVoteState) {
@@ -442,7 +512,6 @@ const Game = () => {
         selectedTrack={selectedTrack}
         setSelectedTrack={setSelectedTrack}
         isSelectDisabled={isButtonSelectDisabled}
-        isSelectingTrackFinished={isSelectingTrackFinished}
         timeIsUp={timeIsUp}
         startVotingForTrack={startVotingForTrack}
         masterId={masterId}

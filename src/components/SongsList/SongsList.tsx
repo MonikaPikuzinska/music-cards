@@ -18,7 +18,6 @@ interface SongsListProps {
   selectedTrack: string | null;
   setSelectedTrack: (id: string | null) => void;
   isSelectDisabled: boolean;
-  isSelectingTrackFinished?: boolean;
   timeIsUp?: boolean;
   startVotingForTrack?: boolean;
   masterId?: UUIDTypes | null;
@@ -31,7 +30,6 @@ const SongsList: React.FC<SongsListProps> = ({
   selectedTrack,
   setSelectedTrack,
   isSelectDisabled,
-  isSelectingTrackFinished = false,
   timeIsUp = false,
   startVotingForTrack = false,
   masterId = null,
@@ -62,27 +60,6 @@ const SongsList: React.FC<SongsListProps> = ({
       }).catch((err) => console.error("Error updating user my_song_id:", err));
     }
   };
-
-  // when selection phase finishes, auto-select a song if none selected
-  React.useEffect(() => {
-    if (!isSelectingTrackFinished) return;
-
-    let songToSubmit = selectedSong;
-    if (!songToSubmit && tracks && tracks.length > 0) {
-      // pick a random track from available (first 6)
-      const pool = tracks.slice(0, 6);
-      const rand = pool[Math.floor(Math.random() * pool.length)];
-      songToSubmit = rand.id;
-      setSelectedSong(songToSubmit);
-    }
-
-    updateUser(user?.id?.toString() || "", {
-      my_song_id: songToSubmit || "",
-      my_song_voted: true,
-    }).catch((err) =>
-      console.error("Error updating user my_song_id on time up:", err),
-    );
-  }, [isSelectingTrackFinished]);
 
   // when global timer is up in Game, clear current selection visually (only once when timeIsUp transitions to true)
   useEffect(() => {
