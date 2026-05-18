@@ -43,6 +43,7 @@ const Game = () => {
     queryKey: ["users", id],
     queryFn: async () => (id ? await getUsersByGameId(id.toString()) : []),
     enabled: !!id,
+    refetchOnWindowFocus: false,
   });
   const [isUserCreated, setIsUserCreated] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -190,6 +191,19 @@ const Game = () => {
       setMasterId(game.master_id);
     }
   }, [game, masterId]);
+
+  // Keep UI in sync if DB already has master's pick (e.g. after refetch or missed realtime).
+  useEffect(() => {
+    if (!masterId || !usersList.length) return;
+    const masterRow = usersList.find((u) => String(u.id) === String(masterId));
+    if (
+      masterRow?.my_song_voted &&
+      typeof masterRow.my_song_id === "string" &&
+      masterRow.my_song_id.trim().length > 0
+    ) {
+      setMasterVoted(true);
+    }
+  }, [usersList, masterId]);
 
   // when usersList changes, fetch Spotify tracks for users that submitted my_song_id
   useEffect(() => {
@@ -385,19 +399,8 @@ const Game = () => {
       console.log("tracks", tracks, selectedSongsList, isSelectingTrackFinished);
 
       try {
-        // When selection phase is finished and we are about to show the list
-        // of songs based on my_song_id, reset `my_song_voted` to false for all users
-        // in this game so they can vote in the next phase.
-        if (id) {
-          const { error: voteResetError } = await supabase
-            .from("users")
-            .update({ my_song_voted: false, my_song_id: "" })
-            .eq("game_id", id.toString());
-
-          if (voteResetError) {
-            console.error("Failed to reset voted flags for users", voteResetError);
-          }
-        }
+        // Keep `my_song_id` / `my_song_voted` intact — they are required for this round
+        // and for building the vote list. Clearing them here wiped DB saves (manual or timeout).
 
         const usersWithSong = usersList.filter(
           (u) => u.my_song_id && u.my_song_id.toString().length > 0,
@@ -471,7 +474,8 @@ const Game = () => {
         });
       }
     })();
-  }, [id, user, authLoading, navigate]);
+    // Depend on `user?.id` only so TOKEN_REFRESHED (new session object, same id) does not re-run join.
+  }, [id, user?.id, authLoading, navigate, queryClient]);
 
   useEffect(() => {
     // Button logic:
@@ -523,7 +527,7 @@ const Game = () => {
           <PlayersList
             usersList={usersList}
             masterId={masterId}
-            timeIsUp={timeIsUp}
+            isVotePhase={isUsersVoteState}
           />
         )}
         <CopyLink />

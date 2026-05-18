@@ -39,23 +39,25 @@ const SongsList: React.FC<SongsListProps> = ({
   const [selectedSong, setSelectedSong] = React.useState<string | null>(null);
   const timeIsUpRef = React.useRef<boolean>(false);
 
-  // Determine if we're in voting mode (timeIsUp and startVotingForTrack)
-  const isVotingMode = timeIsUp && startVotingForTrack;
+  // Voting phase: same UI timer can clear `timeIsUp` when entering USERS_VOTE, so
+  // we must not tie voting to `timeIsUp` — only to whether we're showing songs to vote on.
+  const isVotingMode = startVotingForTrack;
   // Master cannot vote
   const isMaster = currentUser?.id === masterId;
   const isVoteDisabled = isVotingMode && isMaster;
 
   const selectSong = () => {
+    const dbUserId = currentUser?.id?.toString() || user?.id?.toString() || "";
+    if (!dbUserId || !selectedSong) return;
+
     if (isVotingMode) {
-      // Voting mode: save master_song_id and master_song_voted
-      updateUser(user?.id?.toString() || "", {
-        master_song_id: selectedSong || "",
+      updateUser(dbUserId, {
+        master_song_id: selectedSong,
         master_song_voted: true,
       }).catch((err) => console.error("Error updating user master_song_id:", err));
     } else {
-      // Selection mode: save my_song_id and my_song_voted
-      updateUser(user?.id?.toString() || "", {
-        my_song_id: selectedSong || "",
+      updateUser(dbUserId, {
+        my_song_id: selectedSong,
         my_song_voted: true,
       }).catch((err) => console.error("Error updating user my_song_id:", err));
     }

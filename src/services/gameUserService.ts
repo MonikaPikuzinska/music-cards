@@ -53,7 +53,18 @@ export const handleUserJoinGame = async ({
     }
 
     if (existingUserGlobal) {
-      // If the user exists but may belong to another game, update the row to join this game
+      const alreadyInThisGame =
+        String(existingUserGlobal.game_id ?? "") === String(id ?? "");
+
+      if (alreadyInThisGame) {
+        // Re-entry (tab switch, auth refresh): never clear round fields — that was wiping my_song_id / votes.
+        const meInRoom = users.find((u) => String(u.id) === String(user.id));
+        setCurrentUser(meInRoom ?? existingUserGlobal);
+        setIsUserCreated(true);
+        return;
+      }
+
+      // Row exists but belongs to another game — join this room and reset round state for the new game.
       try {
         await updateUser(String(user.id), {
           game_id: id,
@@ -65,7 +76,15 @@ export const handleUserJoinGame = async ({
           master_song_id: "",
           is_logged: true,
         });
-        const merged = { ...existingUserGlobal, game_id: id, is_logged: true };
+        const merged = {
+          ...existingUserGlobal,
+          game_id: id as IUser["game_id"],
+          is_logged: true,
+          my_song_voted: false,
+          master_song_voted: false,
+          my_song_id: "",
+          master_song_id: "",
+        };
         setCurrentUser(merged);
         setIsUserCreated(true);
         return;
