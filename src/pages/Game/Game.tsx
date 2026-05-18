@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useCallback, useEffect, useState, useRef } from "react";
 import { useSpotifyRandomSearch } from "../../services/spotifyTanStackService";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -16,6 +16,7 @@ import {
 import { supabase } from "../../supabase-client";
 import { getGameById, getUsersByGameId } from "../../api/api";
 import Timer from "../../components/Timer/Timer";
+import { toBool } from "../../utils/toBool";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -60,15 +61,28 @@ const Game = () => {
   >([]);
   const [tracks, setTracks] = useState<any[]>([]);
   const [tracksLoading, setTracksLoading] = useState<boolean>(false);
-  const [isSelectingTrackFinished, setIsSelectingTrackFinished] =
-    useState<boolean>(false);
-  const [startVotingForTrack, setIsStartVotingForTrack] =
-    useState<boolean>(false);
-  const [timerKey, setTimerKey] = useState<number>(0);
   const isUsersSelectState = game?.state === GameState.USERS_SELECT;
   const isUsersVoteState = game?.state === GameState.USERS_VOTE;
+  const prevGameStateRef = useRef<GameState | undefined>(undefined);
+  const selectPhaseFinalizeRef = useRef(false);
+
+  const handleTimerFinish = useCallback(() => {
+    setTimeIsUp(true);
+  }, []);
+
+  const refreshUsers = useCallback(() => {
+    if (id) {
+      void queryClient.invalidateQueries({ queryKey: ["users", id] });
+    }
+  }, [id, queryClient]);
 
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
+
+  const voteSongIdsKey = usersList
+    .filter((u) => u.my_song_id && u.my_song_id.trim().length > 0)
+    .map((u) => `${u.id}:${u.my_song_id}`)
+    .sort()
+    .join("|");
   const messageStyle =
     "w-72 rounded-lg bg-indigo-50 text-indigo-600 px-4 py-3 mt-3 text-center font-semibold shadow-sm block text-sm text-indigo-500";
   // different type of styling message "w-80 border-2 border-indigo-400 rounded-lg bg-white/60 text-indigo-400 px-4 py-2 mt-3 text-center font-medium shadow-sm";
@@ -77,16 +91,20 @@ const Game = () => {
     masterIdRef.current = masterId;
   }, [masterId]);
 
-  // Initial list of random Spotify tracks:
-  // - load once when page opens (see query options in useSpotifyRandomSearch)
-  // - do NOT overwrite tracks after the selection phase has finished
+  // Random Spotify pool for master / users selection — not during vote or final.
   useEffect(() => {
-    if (!data || isSelectingTrackFinished) return;
+    if (!data) return;
+    if (
+      game?.state === GameState.USERS_VOTE ||
+      game?.state === GameState.FINAL
+    ) {
+      return;
+    }
 
     const typed = data as unknown as ISpotifyData | null;
     const items = typed?.tracks?.items ?? [];
     setTracks(items.slice(0, 6));
-  }, [data, isSelectingTrackFinished]);
+  }, [data, game?.state]);
 
   useEffect(() => {
     if (!id) return;
@@ -155,7 +173,7 @@ const Game = () => {
             typeof newRec === "object" &&
             "id" in newRec &&
             masterIdRef.current === (newRec as any).id &&
-            !!(newRec as any).my_song_voted
+            toBool((newRec as IUser).my_song_voted)
           ) {
             setMasterVoted(true);
           }
@@ -191,6 +209,13 @@ const Game = () => {
       setMasterId(game.master_id);
     }
   }, [game, masterId]);
+
+  // Keep currentUser in sync with Supabase (selections, votes, timeouts).
+  useEffect(() => {
+    if (!user?.id || !usersList.length) return;
+    const row = usersList.find((u) => String(u.id) === String(user.id));
+    if (row) setCurrentUser(row);
+  }, [usersList, user?.id]);
 
   // Keep UI in sync if DB already has master's pick (e.g. after refetch or missed realtime).
   useEffect(() => {
@@ -250,11 +275,74 @@ const Game = () => {
     };
   }, [usersList]);
 
+  // Clear "time is up" when entering a timed phase so the new Timer instance can run.
   useEffect(() => {
-    const finished = !!masterVoted && timeIsUp === true;
-    console.log("finished", finished);
-    setIsSelectingTrackFinished(finished);
-  }, [masterVoted, timeIsUp, usersList]);
+    const prev = prevGameStateRef.current;
+    const next = game?.state;
+
+    if (
+      next === GameState.USERS_VOTE &&
+      prev !== GameState.USERS_VOTE
+    ) {
+      setTimeIsUp(false);
+    } else if (
+      next === GameState.USERS_SELECT &&
+      prev !== GameState.USERS_SELECT
+    ) {
+      setTimeIsUp(false);
+      selectPhaseFinalizeRef.current = false;
+    }
+
+    prevGameStateRef.current = next;
+
+    if (next === GameState.USERS_VOTE && id) {
+      void queryClient.invalidateQueries({ queryKey: ["users", id] });
+    }
+  }, [game?.state, id, queryClient]);
+
+  // Vote phase: show every player's submitted song (my_song_id) from Supabase.
+  useEffect(() => {
+    if (game?.state !== GameState.USERS_VOTE) return;
+
+    let mounted = true;
+    setTracksLoading(true);
+
+    (async () => {
+      try {
+        const usersWithSong = usersList.filter(
+          (u) => u.my_song_id && u.my_song_id.trim().length > 0,
+        );
+
+        if (usersWithSong.length === 0) {
+          if (mounted) setTracks([]);
+          return;
+        }
+
+        const results = await Promise.all(
+          usersWithSong.map(async (u) => {
+            try {
+              const track = await getSpotifyTrack(u.my_song_id);
+              return track;
+            } catch (err) {
+              console.error("Failed to fetch vote track for user", u.id, err);
+              return null;
+            }
+          }),
+        );
+
+        if (!mounted) return;
+        setTracks(results.filter((t) => t != null));
+      } catch (err) {
+        console.error("Error loading vote-phase tracks:", err);
+      } finally {
+        if (mounted) setTracksLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [game?.state, voteSongIdsKey, usersList]);
 
   useEffect(() => {
     if (!id || !game?.state) return;
@@ -276,6 +364,13 @@ const Game = () => {
         return;
       }
 
+      if (
+        nextState === GameState.USERS_VOTE ||
+        nextState === GameState.USERS_SELECT
+      ) {
+        setTimeIsUp(false);
+      }
+
       setGame((prev) => (prev ? { ...prev, state: nextState } : prev));
     };
 
@@ -287,43 +382,44 @@ const Game = () => {
     }
 
     if (game.state === GameState.USERS_SELECT) {
-      const assignMissingMySongIdsOnTimeout = async () => {
-        if (!timeIsUp) return;
-        if (!currentUser || currentUser.id === masterId) return;
-        if (
-          typeof currentUser.my_song_id === "string" &&
-          currentUser.my_song_id.trim().length > 0
-        ) {
-          return;
-        }
+      const finalizeSelectPhaseOnTimeout = async () => {
+        if (!timeIsUp || selectPhaseFinalizeRef.current) return;
+        selectPhaseFinalizeRef.current = true;
 
         const selectionPool = tracks.slice(0, 6).filter((t) => !!t?.id);
-        if (selectionPool.length === 0) return;
-
-        const { error } = await supabase
-          .from("users")
-          .update({
-            my_song_id: randomTrackIdFromPool(selectionPool),
-            my_song_voted: true,
-          })
-          .eq("id", currentUser.id.toString());
-
-        if (error) {
-          console.error("Failed to auto-assign my_song_id on timeout", error);
-        }
-      };
-      void assignMissingMySongIdsOnTimeout();
-
-      const allNonMasterSongsSelected =
-        nonMasterUsers.length > 0 &&
-        nonMasterUsers.every(
+        const usersNeedingSong = nonMasterUsers.filter(
           (u) =>
-            typeof u.my_song_id === "string" && u.my_song_id.trim().length > 0,
+            typeof u.my_song_id !== "string" || u.my_song_id.trim().length === 0,
         );
 
-      if (timeIsUp && allNonMasterSongsSelected) {
-        void moveToState(GameState.USERS_VOTE);
-      }
+        if (selectionPool.length > 0 && usersNeedingSong.length > 0) {
+          await Promise.all(
+            usersNeedingSong.map(async (u) => {
+              const { error } = await supabase
+                .from("users")
+                .update({
+                  my_song_id: randomTrackIdFromPool(selectionPool),
+                  my_song_voted: true,
+                })
+                .eq("id", u.id.toString());
+
+              if (error) {
+                console.error(
+                  "Failed to auto-assign my_song_id on timeout for user",
+                  u.id,
+                  error,
+                );
+              }
+            }),
+          );
+
+          await queryClient.invalidateQueries({ queryKey: ["users", id] });
+        }
+
+        await moveToState(GameState.USERS_VOTE);
+      };
+
+      void finalizeSelectPhaseOnTimeout();
       return;
     }
 
@@ -360,7 +456,7 @@ const Game = () => {
 
       const allNonMasterUsersVoted =
         nonMasterUsers.length > 0 &&
-        nonMasterUsers.every((u) => u.master_song_voted === true);
+        nonMasterUsers.every((u) => toBool(u.master_song_voted));
 
       if (allNonMasterUsersVoted) {
         void moveToState(GameState.FINAL);
@@ -375,72 +471,8 @@ const Game = () => {
     masterId,
     tracks,
     currentUser,
+    queryClient,
   ]);
-
-  useEffect(() => {
-    if (isUsersSelectState || isUsersVoteState) {
-      setTimeIsUp(false);
-    }
-  }, [isUsersSelectState, isUsersVoteState]);
-
-  // when selection phase finishes, fetch each user's submitted song (my_song_id)
-  // and save the resulting Spotify track objects into `tracks`
-  useEffect(() => {
-    if (!isSelectingTrackFinished) return;
-    if (!usersList || usersList.length === 0) {
-      setTracks([]);
-      return;
-    }
-
-    let mounted = true;
-
-    setTracksLoading(true);
-    (async () => {
-      console.log("tracks", tracks, selectedSongsList, isSelectingTrackFinished);
-
-      try {
-        // Keep `my_song_id` / `my_song_voted` intact — they are required for this round
-        // and for building the vote list. Clearing them here wiped DB saves (manual or timeout).
-
-        const usersWithSong = usersList.filter(
-          (u) => u.my_song_id && u.my_song_id.toString().length > 0,
-        );
-
-        if (usersWithSong.length === 0) {
-          if (mounted) setTracks([]);
-          return;
-        }
-
-        const promises = usersWithSong.map(async (u) => {
-          try {
-            const track = await getSpotifyTrack(u.my_song_id);
-            return { userId: u.id, track };
-          } catch (err) {
-            console.error("Failed to fetch track for user", u.id, err);
-            return null;
-          }
-        });
-
-        const results = await Promise.all(promises);
-        if (!mounted) return;
-
-        const fetched = results.filter((r) => r !== null) as any[];
-
-        const fetchedTracks = fetched.map((f) => f.track);
-        setTracks(fetchedTracks);
-        setIsStartVotingForTrack(true);
-        console.log("fetched tracks for finished selection", fetchedTracks);
-      } catch (err) {
-        console.error("Error fetching tracks when selection finished:", err);
-      } finally {
-        if (mounted) setTracksLoading(false);
-      }
-    })();
-
-    return () => {
-      mounted = false;
-    };
-  }, [isSelectingTrackFinished]);
 
   useEffect(() => {
     // If we don't know auth state yet, wait
@@ -478,14 +510,14 @@ const Game = () => {
   }, [id, user?.id, authLoading, navigate, queryClient]);
 
   useEffect(() => {
-    // Button logic:
-    // - If there are less than 4 players, disable
-    // - If current user is the master: disable after master has voted
-    // - If current user is NOT the master: enable only after master has voted
-    // if (usersList.length < 4) {
-    //   setIsButtonSelectDisabled(true);
-    //   return;
-    // }
+    if (game?.state === GameState.USERS_VOTE) {
+      if (currentUser?.id === masterId) {
+        setIsButtonSelectDisabled(true);
+      } else {
+        setIsButtonSelectDisabled(!!currentUser?.master_song_voted);
+      }
+      return;
+    }
 
     if (currentUser?.id === masterId) {
       setIsButtonSelectDisabled(!!masterVoted);
@@ -493,6 +525,7 @@ const Game = () => {
       setIsButtonSelectDisabled(!masterVoted);
     }
   }, [
+    game?.state,
     isUserCreated,
     usersList,
     currentUser,
@@ -500,11 +533,6 @@ const Game = () => {
     selectedTrack,
     masterVoted,
   ]);
-
-  // whenever voting state changes, bump timerKey so Timer remounts and restarts
-  useEffect(() => {
-    setTimerKey((k) => k + 1);
-  }, [startVotingForTrack, isUsersSelectState, isUsersVoteState]);
 
   return (
     <div className="flex flex-row items-start p-4">
@@ -517,9 +545,11 @@ const Game = () => {
         setSelectedTrack={setSelectedTrack}
         isSelectDisabled={isButtonSelectDisabled}
         timeIsUp={timeIsUp}
-        startVotingForTrack={startVotingForTrack}
+        isVotePhase={isUsersVoteState}
+        tracksLoading={tracksLoading}
         masterId={masterId}
         currentUser={currentUser}
+        onUserUpdated={refreshUsers}
       />
       <div className="flex flex-col items-center">
         {" "}
@@ -527,11 +557,11 @@ const Game = () => {
           <PlayersList
             usersList={usersList}
             masterId={masterId}
-            isVotePhase={isUsersVoteState}
+            gameState={game?.state}
           />
         )}
         <CopyLink />
-        {startVotingForTrack ? (
+        {isUsersVoteState ? (
           user?.id === masterId ? (
             <p className={messageStyle}>
               Players have 2 minutes to vote for a song. You can listen to some
@@ -558,11 +588,9 @@ const Game = () => {
         ) : null}
         {isUsersSelectState || isUsersVoteState ? (
           <Timer
-            key={timerKey}
+            key={game?.state}
             timeSec={120}
-            onFinish={() => {
-              setTimeIsUp(true);
-            }}
+            onFinish={handleTimerFinish}
           />
         ) : null}
       </div>

@@ -1,4 +1,5 @@
 import { supabase } from "../supabase-client";
+import { normalizeUser } from "../utils/normalizeUser";
 import { GameState, IGame, IUser } from "./interface";
 
 export const createGame = async (game: IGame) => {
@@ -87,5 +88,5 @@ export async function getUsersByGameId(gameId: string) {
   if (error) {
     throw error;
   }
-  return data;
+  return (data ?? []).map((row) => normalizeUser(row as IUser));
 }

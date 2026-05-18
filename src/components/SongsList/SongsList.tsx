@@ -19,9 +19,11 @@ interface SongsListProps {
   setSelectedTrack: (id: string | null) => void;
   isSelectDisabled: boolean;
   timeIsUp?: boolean;
-  startVotingForTrack?: boolean;
+  isVotePhase?: boolean;
+  tracksLoading?: boolean;
   masterId?: UUIDTypes | null;
   currentUser?: IUser | null;
+  onUserUpdated?: () => void;
 }
 
 const SongsList: React.FC<SongsListProps> = ({
@@ -31,17 +33,17 @@ const SongsList: React.FC<SongsListProps> = ({
   setSelectedTrack,
   isSelectDisabled,
   timeIsUp = false,
-  startVotingForTrack = false,
+  isVotePhase = false,
+  tracksLoading = false,
   masterId = null,
   currentUser = null,
+  onUserUpdated,
 }) => {
   const { user } = useAuth();
   const [selectedSong, setSelectedSong] = React.useState<string | null>(null);
   const timeIsUpRef = React.useRef<boolean>(false);
 
-  // Voting phase: same UI timer can clear `timeIsUp` when entering USERS_VOTE, so
-  // we must not tie voting to `timeIsUp` — only to whether we're showing songs to vote on.
-  const isVotingMode = startVotingForTrack;
+  const isVotingMode = isVotePhase;
   // Master cannot vote
   const isMaster = currentUser?.id === masterId;
   const isVoteDisabled = isVotingMode && isMaster;
@@ -50,17 +52,26 @@ const SongsList: React.FC<SongsListProps> = ({
     const dbUserId = currentUser?.id?.toString() || user?.id?.toString() || "";
     if (!dbUserId || !selectedSong) return;
 
-    if (isVotingMode) {
-      updateUser(dbUserId, {
-        master_song_id: selectedSong,
-        master_song_voted: true,
-      }).catch((err) => console.error("Error updating user master_song_id:", err));
-    } else {
-      updateUser(dbUserId, {
-        my_song_id: selectedSong,
-        my_song_voted: true,
-      }).catch((err) => console.error("Error updating user my_song_id:", err));
-    }
+    const savePromise = isVotingMode
+      ? updateUser(dbUserId, {
+          master_song_id: selectedSong,
+          master_song_voted: true,
+        })
+      : updateUser(dbUserId, {
+          my_song_id: selectedSong,
+          my_song_voted: true,
+        });
+
+    savePromise
+      .then(() => onUserUpdated?.())
+      .catch((err) =>
+        console.error(
+          isVotingMode
+            ? "Error updating user master_song_id:"
+            : "Error updating user my_song_id:",
+          err,
+        ),
+      );
   };
 
   // when global timer is up in Game, clear current selection visually (only once when timeIsUp transitions to true)
@@ -78,6 +89,11 @@ const SongsList: React.FC<SongsListProps> = ({
 
   return (
     <div className="flex flex-wrap justify-center items-center max-w-9/12">
+      {tracksLoading && isVotePhase ? (
+        <p className="w-full text-center text-indigo-500 text-sm py-4">
+          Loading submitted songs…
+        </p>
+      ) : null}
       {isUserCreated &&
         tracks.map((item) => (
           <SpotifyPlayer

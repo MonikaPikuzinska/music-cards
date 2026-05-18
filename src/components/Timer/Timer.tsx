@@ -6,6 +6,8 @@ const Timer: React.FC<{ timeSec: number; onFinish?: () => void }> = ({
 }) => {
   const [timeLeft, setTimeLeft] = useState(timeSec);
   const finishedRef = React.useRef(false);
+  const onFinishRef = React.useRef(onFinish);
+  onFinishRef.current = onFinish;
 
   // reset when timeSec prop changes
   useEffect(() => {
@@ -18,7 +20,7 @@ const Timer: React.FC<{ timeSec: number; onFinish?: () => void }> = ({
       // ensure onFinish is called only once
       if (!finishedRef.current) {
         finishedRef.current = true;
-        onFinish?.();
+        onFinishRef.current?.();
       }
       return; // stop timer at 0
     }
@@ -28,7 +30,7 @@ const Timer: React.FC<{ timeSec: number; onFinish?: () => void }> = ({
     }, 1000);
 
     return () => clearInterval(timerId);
-  }, [timeLeft, onFinish]);
+  }, [timeLeft]);
 
   const formatSecondsToMMSS = (seconds: number): string => {
     const minutes = Math.floor(seconds / 60);
