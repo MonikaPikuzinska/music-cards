@@ -1,145 +1,60 @@
 import { useEffect, useRef } from "react";
-import {
-  markUserLoggedIn,
-  markUserLoggedOut,
-  markUserLoggedOutKeepalive,
-} from "../api/api";
+import { markUserLoggedIn, markUserLoggedOut, markUserLoggedOutKeepalive } from "../api/api";
 
-const HEARTBEAT_MS = 25_000;
-/** Only used when the tab stays hidden without a bfcache pagehide (backup for close). */
-const HIDDEN_LOGOUT_DELAY_MS = 5_000;
-const LAST_TAB_CHECK_MS = 300;
-
-type PresenceMessage =
-  | { type: "ping"; tabId: string }
-  | { type: "pong"; tabId: string };
+const HEARTBEAT_MS = 20_000;
 
 /**
- * Keeps the user online while the game tab is active.
- * Logs out on tab/window close, not when briefly switching tabs.
+ * Keeps the user marked as online while the game tab is alive.
+ * Only marks offline on a real close/navigation (pagehide persisted=false).
+ * Switching tabs never triggers a logout.
  */
 export function useGamePresence(userId: string | undefined, gameId: string) {
-  const hiddenLogoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
+  const mountedRef = useRef(false);
 
   useEffect(() => {
     if (!userId || !gameId) return;
 
-    const channelName = `game-presence-${userId}-${gameId}`;
-    const channel =
-      typeof BroadcastChannel !== "undefined"
-        ? new BroadcastChannel(channelName)
-        : null;
-
-    const tabId = crypto.randomUUID();
-
-    const clearHiddenLogoutTimer = () => {
-      if (hiddenLogoutTimerRef.current != null) {
-        clearTimeout(hiddenLogoutTimerRef.current);
-        hiddenLogoutTimerRef.current = null;
-      }
-    };
-
-    const markOnline = () => {
-      clearHiddenLogoutTimer();
-      void markUserLoggedIn(userId);
-    };
+    mountedRef.current = true;
 
     const logoutNow = () => {
-      clearHiddenLogoutTimer();
       markUserLoggedOutKeepalive(userId);
       void markUserLoggedOut(userId);
     };
 
-    const logoutIfLastTab = () => {
-      if (!channel) {
-        logoutNow();
-        return;
-      }
-
-      let otherTabAlive = false;
-
-      const onReply = (event: MessageEvent<PresenceMessage>) => {
-        const msg = event.data;
-        if (msg?.tabId !== tabId && msg?.type === "pong") {
-          otherTabAlive = true;
-        }
-      };
-
-      channel.addEventListener("message", onReply);
-      channel.postMessage({ type: "ping", tabId });
-
-      window.setTimeout(() => {
-        channel.removeEventListener("message", onReply);
-        if (!otherTabAlive) logoutNow();
-      }, LAST_TAB_CHECK_MS);
+    // Mark online immediately on mount and whenever the tab becomes visible again.
+    const markOnline = () => {
+      if (!mountedRef.current) return;
+      void markUserLoggedIn(userId);
     };
-
-    const scheduleLogoutAfterHide = () => {
-      clearHiddenLogoutTimer();
-      hiddenLogoutTimerRef.current = setTimeout(() => {
-        hiddenLogoutTimerRef.current = null;
-        logoutIfLastTab();
-      }, HIDDEN_LOGOUT_DELAY_MS);
-    };
-
-    const onChannelMessage = (event: MessageEvent<PresenceMessage>) => {
-      const msg = event.data;
-      if (!msg?.tabId || msg.tabId === tabId) return;
-      if (msg.type === "ping") {
-        channel?.postMessage({ type: "pong", tabId });
-      }
-    };
-
-    channel?.addEventListener("message", onChannelMessage);
 
     markOnline();
 
-    const heartbeat = window.setInterval(() => {
-      if (document.visibilityState === "visible") markOnline();
-    }, HEARTBEAT_MS);
+    const heartbeat = window.setInterval(markOnline, HEARTBEAT_MS);
 
     const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        markOnline();
-      } else {
-        scheduleLogoutAfterHide();
-      }
+      if (document.visibilityState === "visible") markOnline();
+      // Do NOT log out when the tab is hidden — the user may just be switching tabs.
     };
 
+    // Only log out when the page is truly being unloaded, not when entering bfcache.
     const onPageHide = (event: PageTransitionEvent) => {
-      if (event.persisted) {
-        // Tab switch (bfcache) — do not log out; pageshow / visibility will mark online again.
-        clearHiddenLogoutTimer();
-        return;
-      }
-      logoutIfLastTab();
+      if (!event.persisted) logoutNow();
     };
 
     const onPageShow = (event: PageTransitionEvent) => {
       if (event.persisted) markOnline();
     };
 
-    const onUnload = () => {
-      logoutNow();
-    };
-
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("pagehide", onPageHide);
     window.addEventListener("pageshow", onPageShow);
-    window.addEventListener("unload", onUnload);
 
     return () => {
+      mountedRef.current = false;
       window.clearInterval(heartbeat);
-      clearHiddenLogoutTimer();
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("pagehide", onPageHide);
       window.removeEventListener("pageshow", onPageShow);
-      window.removeEventListener("unload", onUnload);
-      channel?.removeEventListener("message", onChannelMessage);
-      channel?.close();
-      logoutIfLastTab();
     };
   }, [userId, gameId]);
 }
