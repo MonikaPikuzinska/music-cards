@@ -1,5 +1,6 @@
 import { User } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useState } from "react";
+import { markUserLoggedOut } from "../api/api";
 import { supabase } from "../supabase-client";
 import { setOnSpotifyUnauthorized } from "../services/spotifyService";
 
@@ -38,6 +39,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setOnSpotifyUnauthorized(() => {
       (async () => {
         try {
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+          if (session?.user?.id) {
+            await markUserLoggedOut(session.user.id);
+          }
           await supabase.auth.signOut();
         } catch (err) {
           console.error("Error signing out after spotify 401:", err);
@@ -63,6 +70,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
   const signOut = async () => {
     try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.user?.id) {
+        await markUserLoggedOut(session.user.id);
+      }
       await supabase.auth.signOut();
       setUser(null);
     } catch (err) {

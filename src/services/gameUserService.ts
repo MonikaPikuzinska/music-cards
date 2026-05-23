@@ -2,6 +2,7 @@ import { v4 as uuid, UUIDTypes } from "uuid";
 import {
   createUser,
   getUsersByGameId,
+  markUserLoggedIn,
   updateUser,
 } from "../api/api";
 import { supabase } from "../supabase-client";
@@ -25,9 +26,16 @@ export const handleUserJoinGame = async ({
   setErrorMessage,
   setCurrentUser,
 }: HandleUserJoinGameParams) => {
+  const gameId = id.toString();
+
+  const syncPlayersList = async () => {
+    const fresh = await getUsersByGameId(gameId);
+    setUsersList(fresh);
+    return fresh;
+  };
+
   try {
-    const users: IUser[] = await getUsersByGameId(id.toString());
-    setUsersList(users);
+    const users: IUser[] = await syncPlayersList();
 
     // Check for max players first
     if (users.length >= 6) {
@@ -58,9 +66,15 @@ export const handleUserJoinGame = async ({
 
       if (alreadyInThisGame) {
         // Re-entry (tab switch, auth refresh): never clear round fields — that was wiping my_song_id / votes.
+        await markUserLoggedIn(String(user.id));
         const meInRoom = users.find((u) => String(u.id) === String(user.id));
-        setCurrentUser(meInRoom ?? existingUserGlobal);
+        setCurrentUser(
+          meInRoom
+            ? { ...meInRoom, is_logged: true }
+            : { ...existingUserGlobal, is_logged: true },
+        );
         setIsUserCreated(true);
+        await syncPlayersList();
         return;
       }
 
@@ -87,6 +101,7 @@ export const handleUserJoinGame = async ({
         };
         setCurrentUser(merged);
         setIsUserCreated(true);
+        await syncPlayersList();
         return;
       } catch (err) {
         setErrorMessage("Error updating existing user");
@@ -102,7 +117,7 @@ export const handleUserJoinGame = async ({
       try {
         const newUser = {
           id: user.id,
-          game_id: users[0]?.game_id,
+          game_id: gameId as IUser["game_id"],
           name: currentUserName || uuid(),
           avatar: user
             ? getRandomAvatar(users.map((u) => u.avatar)).iconName
@@ -117,13 +132,16 @@ export const handleUserJoinGame = async ({
         setCurrentUser(newUser);
         await createUser(newUser);
         setIsUserCreated(true);
+        await syncPlayersList();
       } catch {
         setIsUserCreated(false);
         setErrorMessage("Error creating user");
       }
     } else {
-      setCurrentUser(userExists);
+      await markUserLoggedIn(String(userExists.id));
+      setCurrentUser({ ...userExists, is_logged: true });
       setIsUserCreated(true);
+      await syncPlayersList();
     }
   } catch (err) {
     setErrorMessage("Error fetching users");

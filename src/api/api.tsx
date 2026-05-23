@@ -1,4 +1,4 @@
-import { supabase } from "../supabase-client";
+import { supabase, supabaseUrl } from "../supabase-client";
 import { normalizeUser } from "../utils/normalizeUser";
 import { GameState, IGame, IUser } from "./interface";
 
@@ -26,6 +26,56 @@ export const updateUser = async (userId: string, updates: Partial<IUser>) => {
 
   if (error) throw new Error(error.message);
   return data;
+};
+
+export const markUserLoggedOut = async (userId: string) => {
+  const { error } = await supabase
+    .from("users")
+    .update({ is_logged: false })
+    .eq("id", userId);
+
+  if (error) throw new Error(error.message);
+};
+
+/** Runs during tab close; fetch keepalive survives page unload. */
+export function markUserLoggedOutKeepalive(userId: string): void {
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+  if (!anonKey || !supabaseUrl) return;
+
+  const url = `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`;
+  const body = JSON.stringify({ is_logged: false });
+  const baseHeaders = {
+    apikey: anonKey,
+    "Content-Type": "application/json",
+    Prefer: "return=minimal",
+  };
+
+  void fetch(url, {
+    method: "PATCH",
+    headers: { ...baseHeaders, Authorization: `Bearer ${anonKey}` },
+    body,
+    keepalive: true,
+  });
+
+  void supabase.auth.getSession().then(({ data: { session } }) => {
+    const token = session?.access_token;
+    if (!token) return;
+    void fetch(url, {
+      method: "PATCH",
+      headers: { ...baseHeaders, Authorization: `Bearer ${token}` },
+      body,
+      keepalive: true,
+    });
+  });
+}
+
+export const markUserLoggedIn = async (userId: string) => {
+  const { error } = await supabase
+    .from("users")
+    .update({ is_logged: true })
+    .eq("id", userId);
+
+  if (error) throw new Error(error.message);
 };
 
 export const createGameBoardDB = async (userData: IUser) => {

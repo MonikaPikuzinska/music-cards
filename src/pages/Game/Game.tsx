@@ -15,8 +15,13 @@ import {
 } from "../../services/spotifyService";
 import { supabase } from "../../supabase-client";
 import { getGameById, getUsersByGameId } from "../../api/api";
+import { useGamePresence } from "../../hooks/useGamePresence";
 import Timer from "../../components/Timer/Timer";
 import { toBool } from "../../utils/toBool";
+import {
+  applyUsersRealtimeToCache,
+  usersQueryKey,
+} from "../../utils/usersQueryCache";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -37,14 +42,17 @@ const Game = () => {
   const { data, error, isLoading } = useSpotifyRandomSearch();
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const gameId = id?.toString() ?? "";
+
   const { data: usersList = [], refetch: refetchUsers } = useQuery<
     IUser[],
     Error
   >({
-    queryKey: ["users", id],
-    queryFn: async () => (id ? await getUsersByGameId(id.toString()) : []),
-    enabled: !!id,
-    refetchOnWindowFocus: false,
+    queryKey: usersQueryKey(gameId),
+    queryFn: async () => (gameId ? await getUsersByGameId(gameId) : []),
+    enabled: !!gameId,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
   });
   const [isUserCreated, setIsUserCreated] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -71,10 +79,10 @@ const Game = () => {
   }, []);
 
   const refreshUsers = useCallback(() => {
-    if (id) {
-      void queryClient.invalidateQueries({ queryKey: ["users", id] });
+    if (gameId) {
+      void queryClient.invalidateQueries({ queryKey: usersQueryKey(gameId) });
     }
-  }, [id, queryClient]);
+  }, [gameId, queryClient]);
 
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
 
@@ -90,6 +98,8 @@ const Game = () => {
   useEffect(() => {
     masterIdRef.current = masterId;
   }, [masterId]);
+
+  useGamePresence(user?.id, gameId);
 
   // Random Spotify pool for master / users selection — not during vote or final.
   useEffect(() => {
@@ -129,51 +139,22 @@ const Game = () => {
   }, [error]);
 
   useEffect(() => {
-    // don't subscribe until we have a game id
-    if (!id) return;
+    if (!gameId) return;
 
-    let mounted = true;
-    // small debounce timer to coalesce bursts of realtime events
-    let refetchTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const invalidateUsers = async () => {
-      try {
-        await queryClient.invalidateQueries({ queryKey: ["users", id] });
-      } catch (err) {
-        console.error("Failed to invalidate users after realtime event", err);
-      }
-    };
-
-    // Subscribe to changes in 'users' table for this specific game_id
     const usersSub = supabase
-      .channel(`users-changes-${id}`)
+      .channel(`users-changes-${gameId}`)
       .on(
         "postgres_changes",
-        // listen to all change types (INSERT/UPDATE/DELETE) and filter server-side by game_id
-        {
-          event: "*",
-          schema: "public",
-          table: "users",
-          filter: `game_id=eq.${id}`,
-        },
+        { event: "*", schema: "public", table: "users" },
         (payload) => {
-          console.log("users change (filtered by game_id):", payload);
+          applyUsersRealtimeToCache(queryClient, gameId, payload);
 
-          // debounce canonical invalidation to avoid many rapid requests
-          if (refetchTimer) clearTimeout(refetchTimer);
-          refetchTimer = setTimeout(() => {
-            invalidateUsers();
-            refetchTimer = null;
-          }, 150);
-
-          // if the master user's row was updated and the master has voted, mark masterVoted
-          const newRec = (payload as any)?.new as IUser | null;
+          const newRec = payload.new as IUser | null;
           if (
             newRec &&
-            typeof newRec === "object" &&
-            "id" in newRec &&
-            masterIdRef.current === (newRec as any).id &&
-            toBool((newRec as IUser).my_song_voted)
+            masterIdRef.current != null &&
+            String(masterIdRef.current) === String(newRec.id) &&
+            toBool(newRec.my_song_voted)
           ) {
             setMasterVoted(true);
           }
@@ -181,28 +162,28 @@ const Game = () => {
       )
       .subscribe();
 
-    // Optionally watch the game row changes too (filtered by id)
     const gameSub = supabase
-      .channel(`game-changes-${id}`)
+      .channel(`game-changes-${gameId}`)
       .on(
         "postgres_changes",
-        { event: "*", schema: "public", table: "games", filter: `id=eq.${id}` },
+        {
+          event: "*",
+          schema: "public",
+          table: "games",
+          filter: `id=eq.${gameId}`,
+        },
         (payload) => {
-          console.log("Game table changed:", payload);
-          const newRec = (payload as any)?.new as IGame | null;
+          const newRec = payload.new as IGame | null;
           if (newRec) setGame(newRec);
         },
       )
       .subscribe();
 
     return () => {
-      mounted = false;
-      if (refetchTimer) clearTimeout(refetchTimer);
       supabase.removeChannel(usersSub);
       supabase.removeChannel(gameSub);
     };
-    // only re-subscribe when the id changes
-  }, [id]);
+  }, [gameId, queryClient]);
 
   useEffect(() => {
     if (game && !masterId) {
@@ -296,9 +277,9 @@ const Game = () => {
     prevGameStateRef.current = next;
 
     if (next === GameState.USERS_VOTE && id) {
-      void queryClient.invalidateQueries({ queryKey: ["users", id] });
+      void queryClient.invalidateQueries({ queryKey: usersQueryKey(gameId) });
     }
-  }, [game?.state, id, queryClient]);
+  }, [game?.state, gameId, queryClient]);
 
   // Vote phase: show every player's submitted song (my_song_id) from Supabase.
   useEffect(() => {
@@ -413,7 +394,7 @@ const Game = () => {
             }),
           );
 
-          await queryClient.invalidateQueries({ queryKey: ["users", id] });
+          await queryClient.invalidateQueries({ queryKey: usersQueryKey(gameId) });
         }
 
         await moveToState(GameState.USERS_VOTE);
@@ -499,7 +480,7 @@ const Game = () => {
           id: id.toString(),
           user,
           setUsersList: (users: IUser[]) =>
-            queryClient.setQueryData(["users", id], users),
+            queryClient.setQueryData(usersQueryKey(gameId), users),
           setIsUserCreated,
           setErrorMessage,
           setCurrentUser,

@@ -43,7 +43,9 @@ const PlayersList: React.FC<PlayersListProps> = ({
   <div className="p-4 mt-4 w-full">
     <h2 className="text-lg font-bold text-indigo-400 mb-2">Players:</h2>
     <ul>
-      {usersList.map((u) => {
+      {usersList
+        .filter((u) => u.is_logged !== false)
+        .map((u) => {
         const showCheck = shouldShowVotedCheck(u, gameState, masterId);
         return (
           <li key={String(u.id)}>
