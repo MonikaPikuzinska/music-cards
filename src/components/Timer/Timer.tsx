@@ -1,54 +1,60 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 
-const Timer: React.FC<{ timeSec: number; onFinish?: () => void }> = ({
-  timeSec,
-  onFinish,
-}) => {
-  const [timeLeft, setTimeLeft] = useState(timeSec);
-  const finishedRef = React.useRef(false);
-  const onFinishRef = React.useRef(onFinish);
+interface TimerProps {
+  /** Total duration of the phase in seconds (e.g. 120). */
+  timeSec: number;
+  /** ISO timestamp written to the DB when the timed phase started. */
+  startedAt: string;
+  onFinish?: () => void;
+}
+
+const calcTimeLeft = (timeSec: number, startedAt: string): number => {
+  const elapsed = Math.floor(
+    (Date.now() - new Date(startedAt).getTime()) / 1000,
+  );
+  return Math.max(0, timeSec - elapsed);
+};
+
+const formatMMSS = (seconds: number): string => {
+  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
+  const s = (seconds % 60).toString().padStart(2, "0");
+  return `${m}:${s}`;
+};
+
+const Timer: React.FC<TimerProps> = ({ timeSec, startedAt, onFinish }) => {
+  const [timeLeft, setTimeLeft] = useState(() => calcTimeLeft(timeSec, startedAt));
+  const finishedRef = useRef(false);
+  const onFinishRef = useRef(onFinish);
   onFinishRef.current = onFinish;
 
-  // reset when timeSec prop changes
+  // Re-sync whenever the anchor timestamp changes (new phase started).
   useEffect(() => {
-    setTimeLeft(timeSec);
     finishedRef.current = false;
-  }, [timeSec]);
+    setTimeLeft(calcTimeLeft(timeSec, startedAt));
+  }, [timeSec, startedAt]);
 
   useEffect(() => {
     if (timeLeft <= 0) {
-      // ensure onFinish is called only once
       if (!finishedRef.current) {
         finishedRef.current = true;
         onFinishRef.current?.();
       }
-      return; // stop timer at 0
+      return;
     }
 
-    const timerId = setInterval(() => {
-      setTimeLeft((prevTime) => prevTime - 1);
+    const id = setInterval(() => {
+      setTimeLeft(calcTimeLeft(timeSec, startedAt));
     }, 1000);
 
-    return () => clearInterval(timerId);
-  }, [timeLeft]);
-
-  const formatSecondsToMMSS = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-
-    // Pad with leading zeros if needed
-    const minutesStr = minutes.toString().padStart(2, "0");
-    const secondsStr = remainingSeconds.toString().padStart(2, "0");
-
-    return `${minutesStr}:${secondsStr}`;
-  };
+    return () => clearInterval(id);
+  }, [timeLeft, timeSec, startedAt]);
 
   return (
     <div>
       <p className="w-72 rounded-lg bg-indigo-50 text-indigo-600 px-4 py-3 mt-3 text-center font-semibold shadow-sm">
         <span className="block text-sm text-indigo-500">Time left</span>
         <span className="block text-2xl font-bold mt-1">
-          {formatSecondsToMMSS(timeLeft)}
+          {formatMMSS(timeLeft)}
         </span>
       </p>
     </div>

@@ -335,9 +335,18 @@ const Game = () => {
     };
 
     const moveToState = async (nextState: GameState) => {
+      const isTimed =
+        nextState === GameState.USERS_SELECT ||
+        nextState === GameState.USERS_VOTE;
+
+      const updates: Record<string, unknown> = { state: nextState };
+      if (isTimed) {
+        updates.timer_started_at = new Date().toISOString();
+      }
+
       const { error } = await supabase
         .from("games")
-        .update({ state: nextState })
+        .update(updates)
         .eq("id", id.toString());
 
       if (error) {
@@ -345,14 +354,21 @@ const Game = () => {
         return;
       }
 
-      if (
-        nextState === GameState.USERS_VOTE ||
-        nextState === GameState.USERS_SELECT
-      ) {
+      if (isTimed) {
         setTimeIsUp(false);
       }
 
-      setGame((prev) => (prev ? { ...prev, state: nextState } : prev));
+      setGame((prev) =>
+        prev
+          ? {
+              ...prev,
+              state: nextState,
+              ...(isTimed
+                ? { timer_started_at: updates.timer_started_at as string }
+                : {}),
+            }
+          : prev,
+      );
     };
 
     if (game.state === GameState.MASTER_SELECTS) {
@@ -567,10 +583,12 @@ const Game = () => {
             </p>
           )
         ) : null}
-        {isUsersSelectState || isUsersVoteState ? (
+        {(isUsersSelectState || isUsersVoteState) &&
+        game?.timer_started_at ? (
           <Timer
-            key={game?.state}
+            key={game.state}
             timeSec={120}
+            startedAt={game.timer_started_at}
             onFinish={handleTimerFinish}
           />
         ) : null}

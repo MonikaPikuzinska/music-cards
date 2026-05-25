@@ -12,6 +12,7 @@ export interface IGame {
   game_number: number;
   master_id: UUIDTypes;
   state: GameState;
+  timer_started_at?: string | null;
 }
 
 export interface IUser {
