@@ -23,7 +23,7 @@ interface SongsListProps {
   tracksLoading?: boolean;
   masterId?: UUIDTypes | null;
   currentUser?: IUser | null;
-  onUserUpdated?: () => void;
+  onUserSaved?: (userId: string, patch: Partial<IUser>) => void;
 }
 
 const SongsList: React.FC<SongsListProps> = ({
@@ -37,7 +37,7 @@ const SongsList: React.FC<SongsListProps> = ({
   tracksLoading = false,
   masterId = null,
   currentUser = null,
-  onUserUpdated,
+  onUserSaved,
 }) => {
   const { user } = useAuth();
   const [selectedSong, setSelectedSong] = React.useState<string | null>(null);
@@ -52,18 +52,15 @@ const SongsList: React.FC<SongsListProps> = ({
     const dbUserId = currentUser?.id?.toString() || user?.id?.toString() || "";
     if (!dbUserId || !selectedSong) return;
 
-    const savePromise = isVotingMode
-      ? updateUser(dbUserId, {
-          master_song_id: selectedSong,
-          master_song_voted: true,
-        })
-      : updateUser(dbUserId, {
-          my_song_id: selectedSong,
-          my_song_voted: true,
-        });
+    const patch: Partial<IUser> = isVotingMode
+      ? { master_song_id: selectedSong, master_song_voted: true }
+      : { my_song_id: selectedSong, my_song_voted: true };
 
-    savePromise
-      .then(() => onUserUpdated?.())
+    updateUser(dbUserId, patch)
+      .then((rows) => {
+        const saved = rows?.[0] as Partial<IUser> | undefined;
+        onUserSaved?.(dbUserId, saved ? { ...patch, ...saved } : patch);
+      })
       .catch((err) =>
         console.error(
           isVotingMode

@@ -20,8 +20,12 @@ import Timer from "../../components/Timer/Timer";
 import { toBool } from "../../utils/toBool";
 import {
   applyUsersRealtimeToCache,
+  mergeUsersLists,
+  patchUserInCache,
+  refreshUsersForGame,
   usersQueryKey,
 } from "../../utils/usersQueryCache";
+import { toSpotifyListItem } from "../../utils/spotifyTrack";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -49,7 +53,12 @@ const Game = () => {
     Error
   >({
     queryKey: usersQueryKey(gameId),
-    queryFn: async () => (gameId ? await getUsersByGameId(gameId) : []),
+    queryFn: async () => {
+      const fresh = gameId ? await getUsersByGameId(gameId) : [];
+      const prev =
+        queryClient.getQueryData<IUser[]>(usersQueryKey(gameId)) ?? [];
+      return mergeUsersLists(prev, fresh);
+    },
     enabled: !!gameId,
     staleTime: 0,
     refetchOnWindowFocus: true,
@@ -78,11 +87,14 @@ const Game = () => {
     setTimeIsUp(true);
   }, []);
 
-  const refreshUsers = useCallback(() => {
-    if (gameId) {
-      void queryClient.invalidateQueries({ queryKey: usersQueryKey(gameId) });
-    }
-  }, [gameId, queryClient]);
+  const handleUserSaved = useCallback(
+    (userId: string, patch: Partial<IUser>) => {
+      if (!gameId) return;
+      patchUserInCache(queryClient, gameId, userId, patch);
+      void refreshUsersForGame(queryClient, gameId);
+    },
+    [gameId, queryClient],
+  );
 
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
 
@@ -100,6 +112,15 @@ const Game = () => {
   }, [masterId]);
 
   useGamePresence(user?.id, gameId);
+
+  // Poll so other clients always see joiners even if realtime is delayed.
+  useEffect(() => {
+    if (!gameId) return;
+    const poll = window.setInterval(() => {
+      void refreshUsersForGame(queryClient, gameId);
+    }, 8_000);
+    return () => window.clearInterval(poll);
+  }, [gameId, queryClient]);
 
   // Random Spotify pool for master / users selection — not during vote or final.
   useEffect(() => {
@@ -277,7 +298,7 @@ const Game = () => {
     prevGameStateRef.current = next;
 
     if (next === GameState.USERS_VOTE && id) {
-      void queryClient.invalidateQueries({ queryKey: usersQueryKey(gameId) });
+      void refreshUsersForGame(queryClient, gameId);
     }
   }, [game?.state, gameId, queryClient]);
 
@@ -312,7 +333,11 @@ const Game = () => {
         );
 
         if (!mounted) return;
-        setTracks(results.filter((t) => t != null));
+        setTracks(
+          results
+            .filter((t) => t != null && t.id)
+            .map((t) => toSpotifyListItem(t)),
+        );
       } catch (err) {
         console.error("Error loading vote-phase tracks:", err);
       } finally {
@@ -410,7 +435,7 @@ const Game = () => {
             }),
           );
 
-          await queryClient.invalidateQueries({ queryKey: usersQueryKey(gameId) });
+          await refreshUsersForGame(queryClient, gameId);
         }
 
         await moveToState(GameState.USERS_VOTE);
@@ -496,7 +521,10 @@ const Game = () => {
           id: id.toString(),
           user,
           setUsersList: (users: IUser[]) =>
-            queryClient.setQueryData(usersQueryKey(gameId), users),
+            queryClient.setQueryData<IUser[]>(
+              usersQueryKey(gameId),
+              (prev = []) => mergeUsersLists(prev, users),
+            ),
           setIsUserCreated,
           setErrorMessage,
           setCurrentUser,
@@ -546,7 +574,7 @@ const Game = () => {
         tracksLoading={tracksLoading}
         masterId={masterId}
         currentUser={currentUser}
-        onUserUpdated={refreshUsers}
+        onUserSaved={handleUserSaved}
       />
       <div className="flex flex-col items-center">
         {" "}

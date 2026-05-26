@@ -5,6 +5,7 @@ import { GameState, IUser } from "../../api/interface";
 import { UUIDTypes } from "uuid";
 import { faCheck } from "@fortawesome/free-solid-svg-icons";
 import { toBool } from "../../utils/toBool";
+import { isLoggedIn } from "../../utils/isLoggedIn";
 
 interface PlayersListProps {
   usersList: IUser[];
@@ -44,31 +45,31 @@ const PlayersList: React.FC<PlayersListProps> = ({
     <h2 className="text-lg font-bold text-indigo-400 mb-2">Players:</h2>
     <ul>
       {usersList
-        .filter((u) => u.is_logged !== false)
+        .filter((u) => isLoggedIn(u))
         .map((u) => {
-        const showCheck = shouldShowVotedCheck(u, gameState, masterId);
-        return (
-          <li key={String(u.id)}>
-            <FontAwesomeIcon
-              icon={icons[u.avatar as keyof typeof icons]}
-              className="text-indigo-400"
-            />
-            <span
-              className={`ml-2 mr-2 font-bold ${
-                masterId === u.id ? "text-indigo-600" : ""
-              }`}
-            >
-              {u.name}
-            </span>
-            <span className="mr-2">{`${u.points} ${
-              u.points === 1 ? "point" : "points"
-            }`}</span>
-            {showCheck ? (
-              <FontAwesomeIcon className="text-indigo-400" icon={faCheck} />
-            ) : null}
-          </li>
-        );
-      })}
+          const showCheck = shouldShowVotedCheck(u, gameState, masterId);
+          return (
+            <li key={String(u.id)}>
+              <FontAwesomeIcon
+                icon={icons[u.avatar as keyof typeof icons]}
+                className="text-indigo-400"
+              />
+              <span
+                className={`ml-2 mr-2 font-bold ${
+                  masterId === u.id ? "text-indigo-600" : ""
+                }`}
+              >
+                {u.name}
+              </span>
+              <span className="mr-2">{`${u.points} ${
+                u.points === 1 ? "point" : "points"
+              }`}</span>
+              {showCheck ? (
+                <FontAwesomeIcon className="text-indigo-400" icon={faCheck} />
+              ) : null}
+            </li>
+          );
+        })}
     </ul>
   </div>
 );

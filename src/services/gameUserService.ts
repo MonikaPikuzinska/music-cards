@@ -8,6 +8,7 @@ import {
 import { supabase } from "../supabase-client";
 import getRandomAvatar from "../utils/getRandomAvatar";
 import { IUser } from "../api/interface";
+import { markRecentJoin } from "../utils/usersQueryCache";
 
 interface HandleUserJoinGameParams {
   id: UUIDTypes | string;
@@ -66,6 +67,7 @@ export const handleUserJoinGame = async ({
 
       if (alreadyInThisGame) {
         // Re-entry (tab switch, auth refresh): never clear round fields — that was wiping my_song_id / votes.
+        markRecentJoin(String(user.id));
         await markUserLoggedIn(String(user.id));
         const meInRoom = users.find((u) => String(u.id) === String(user.id));
         setCurrentUser(
@@ -80,6 +82,7 @@ export const handleUserJoinGame = async ({
 
       // Row exists but belongs to another game — join this room and reset round state for the new game.
       try {
+        markRecentJoin(String(user.id));
         await updateUser(String(user.id), {
           game_id: id,
           avatar: existingUserGlobal.avatar || (user ? uuid() : ""),
@@ -109,39 +112,30 @@ export const handleUserJoinGame = async ({
       }
     }
 
-    // If no global existing user, check by name among current game's users
-    const userExistsByName = users.find((u) => u.name === currentUserName);
-    const userExists = userExistsByName;
-
-    if (!userExists) {
-      try {
-        const newUser = {
-          id: user.id,
-          game_id: gameId as IUser["game_id"],
-          name: currentUserName || uuid(),
-          avatar: user
-            ? getRandomAvatar(users.map((u) => u.avatar)).iconName
-            : "",
-          my_song_voted: false,
-          master_song_voted: false,
-          points: 0,
-          my_song_id: "",
-          master_song_id: "",
-          is_logged: true,
-        };
-        setCurrentUser(newUser);
-        await createUser(newUser);
-        setIsUserCreated(true);
-        await syncPlayersList();
-      } catch {
-        setIsUserCreated(false);
-        setErrorMessage("Error creating user");
-      }
-    } else {
-      await markUserLoggedIn(String(userExists.id));
-      setCurrentUser({ ...userExists, is_logged: true });
+    try {
+      const newUser = {
+        id: user.id,
+        game_id: gameId as IUser["game_id"],
+        name: currentUserName || uuid(),
+        avatar: user
+          ? getRandomAvatar(users.map((u) => u.avatar)).iconName
+          : "",
+        my_song_voted: false,
+        master_song_voted: false,
+        points: 0,
+        my_song_id: "",
+        master_song_id: "",
+        is_logged: true,
+      };
+      markRecentJoin(String(user.id));
+      setCurrentUser(newUser);
+      await createUser(newUser);
+      await markUserLoggedIn(String(user.id));
       setIsUserCreated(true);
       await syncPlayersList();
+    } catch {
+      setIsUserCreated(false);
+      setErrorMessage("Error creating user");
     }
   } catch (err) {
     setErrorMessage("Error fetching users");
