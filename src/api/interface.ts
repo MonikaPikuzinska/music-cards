@@ -13,6 +13,8 @@ export interface IGame {
   master_id: UUIDTypes;
   state: GameState;
   timer_started_at?: string | null;
+  clue?: string | null;
+  scores_applied?: boolean | null;
 }
 
 export interface IUser {
@@ -26,4 +28,5 @@ export interface IUser {
   my_song_id: string;
   master_song_id: string;
   is_logged: boolean;
+  song_hand?: string[];
 }

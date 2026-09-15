@@ -1,5 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from "react";
-import { useSpotifyRandomSearch } from "../../services/spotifyTanStackService";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,13 +7,16 @@ import { GameState, IGame, IUser } from "../../api/interface";
 import PlayersList from "../../components/PlayersList/PlayersList";
 import CopyLink from "../../components/CopyLink/CopyLink";
 import SongsList from "../../components/SongsList/SongsList";
+import RoundResults from "../../components/RoundResults/RoundResults";
 import { handleUserJoinGame } from "../../services/gameUserService";
 import {
+  fetchUnusedSpotifyTracks,
   getSpotifyTrack,
+  getSpotifyTracksByIds,
   isSpotifySessionValid,
 } from "../../services/spotifyService";
 import { supabase } from "../../supabase-client";
-import { getGameById, getUsersByGameId } from "../../api/api";
+import { getGameById, getUsersByGameId, updateUser } from "../../api/api";
 import { useGamePresence } from "../../hooks/useGamePresence";
 import Timer from "../../components/Timer/Timer";
 import { toBool } from "../../utils/toBool";
@@ -26,6 +28,21 @@ import {
   usersQueryKey,
 } from "../../utils/usersQueryCache";
 import { toSpotifyListItem } from "../../utils/spotifyTrack";
+import { isLoggedIn } from "../../utils/isLoggedIn";
+import { randomTrackIdFromPool } from "../../utils/canVoteForTrack";
+import {
+  GAME_TIMER_DURATION_SEC,
+  HAND_SIZE,
+  MIN_PLAYERS_TO_START,
+  RECOMMENDED_PLAYERS_MIN,
+  MAX_PLAYERS,
+} from "../../constants/game";
+import { finalizeVoteRound, startNextRound } from "../../services/roundService";
+import {
+  parseSongHand,
+  pickUniqueHand,
+  usedSongIdsFromUsers,
+} from "../../utils/songHand";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -34,24 +51,17 @@ interface ISpotifyTrackItem {
   };
 }
 
-interface ISpotifyData {
-  tracks: {
-    items: ISpotifyTrackItem[];
-  };
-}
+const messageStyle =
+  "w-72 rounded-lg bg-indigo-50 text-indigo-600 px-4 py-3 mt-3 text-center font-semibold shadow-sm block text-sm text-indigo-500";
 
 const Game = () => {
   const { user, authLoading, signOut } = useAuth();
   const navigate = useNavigate();
-  const { data, error, isLoading } = useSpotifyRandomSearch();
   const { id } = useParams();
   const queryClient = useQueryClient();
   const gameId = id?.toString() ?? "";
 
-  const { data: usersList = [], refetch: refetchUsers } = useQuery<
-    IUser[],
-    Error
-  >({
+  const { data: usersList = [] } = useQuery<IUser[], Error>({
     queryKey: usersQueryKey(gameId),
     queryFn: async () => {
       const fresh = gameId ? await getUsersByGameId(gameId) : [];
@@ -76,12 +86,17 @@ const Game = () => {
   const [selectedSongsList, setSelectedSongsList] = useState<
     Array<{ userId: string; track: any }>
   >([]);
-  const [tracks, setTracks] = useState<any[]>([]);
+  const [tracks, setTracks] = useState<ISpotifyTrackItem[]>([]);
   const [tracksLoading, setTracksLoading] = useState<boolean>(false);
+  const [nextRoundLoading, setNextRoundLoading] = useState(false);
   const isUsersSelectState = game?.state === GameState.USERS_SELECT;
   const isUsersVoteState = game?.state === GameState.USERS_VOTE;
+  const isFinalState = game?.state === GameState.FINAL;
+  const isMasterSelectState = game?.state === GameState.MASTER_SELECTS;
   const prevGameStateRef = useRef<GameState | undefined>(undefined);
   const selectPhaseFinalizeRef = useRef(false);
+  const votePhaseFinalizeRef = useRef(false);
+  const dealingRef = useRef(false);
 
   const handleTimerFinish = useCallback(() => {
     setTimeIsUp(true);
@@ -96,6 +111,39 @@ const Game = () => {
     [gameId, queryClient],
   );
 
+  const resetLocalRound = useCallback(() => {
+    setMasterVoted(false);
+    setSelectedTrack(null);
+    setSelectedSongsList([]);
+    setTracks([]);
+    setTimeIsUp(false);
+    selectPhaseFinalizeRef.current = false;
+    votePhaseFinalizeRef.current = false;
+    dealingRef.current = false;
+  }, []);
+
+  const handleNextRound = useCallback(async () => {
+    if (!gameId || masterId == null) return;
+    setNextRoundLoading(true);
+    try {
+      const next = await startNextRound({
+        gameId,
+        users: usersList,
+        currentMasterId: String(masterId),
+        gameNumber: game?.game_number ?? 1,
+      });
+      if (next) {
+        setGame(next);
+        resetLocalRound();
+        await refreshUsersForGame(queryClient, gameId);
+      }
+    } catch (err) {
+      console.error("Failed to start next round", err);
+    } finally {
+      setNextRoundLoading(false);
+    }
+  }, [game?.game_number, gameId, masterId, queryClient, resetLocalRound, usersList]);
+
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
 
   const voteSongIdsKey = usersList
@@ -103,9 +151,30 @@ const Game = () => {
     .map((u) => `${u.id}:${u.my_song_id}`)
     .sort()
     .join("|");
-  const messageStyle =
-    "w-72 rounded-lg bg-indigo-50 text-indigo-600 px-4 py-3 mt-3 text-center font-semibold shadow-sm block text-sm text-indigo-500";
-  // different type of styling message "w-80 border-2 border-indigo-400 rounded-lg bg-white/60 text-indigo-400 px-4 py-2 mt-3 text-center font-medium shadow-sm";
+
+  const currentHandKey = parseSongHand(currentUser?.song_hand).join("|");
+
+  const onlinePlayers = usersList.filter((u) => isLoggedIn(u));
+  const waitingForPlayers = onlinePlayers.length < MIN_PLAYERS_TO_START;
+  const isCurrentMaster =
+    currentUser != null &&
+    masterId != null &&
+    String(currentUser.id) === String(masterId);
+
+  const tracksById = useMemo(() => {
+    const map: Record<string, ISpotifyTrackItem> = {};
+    for (const item of selectedSongsList) {
+      if (item.track?.id) {
+        map[item.track.id] = toSpotifyListItem(item.track);
+      }
+    }
+    for (const t of tracks) {
+      if (t?.id) {
+        map[t.id] = toSpotifyListItem(t);
+      }
+    }
+    return map;
+  }, [selectedSongsList, tracks]);
 
   useEffect(() => {
     masterIdRef.current = masterId;
@@ -113,7 +182,6 @@ const Game = () => {
 
   useGamePresence(user?.id, gameId);
 
-  // Poll so other clients always see joiners even if realtime is delayed.
   useEffect(() => {
     if (!gameId) return;
     const poll = window.setInterval(() => {
@@ -121,21 +189,6 @@ const Game = () => {
     }, 8_000);
     return () => window.clearInterval(poll);
   }, [gameId, queryClient]);
-
-  // Random Spotify pool for master / users selection — not during vote or final.
-  useEffect(() => {
-    if (!data) return;
-    if (
-      game?.state === GameState.USERS_VOTE ||
-      game?.state === GameState.FINAL
-    ) {
-      return;
-    }
-
-    const typed = data as unknown as ISpotifyData | null;
-    const items = typed?.tracks?.items ?? [];
-    setTracks(items.slice(0, 6));
-  }, [data, game?.state]);
 
   useEffect(() => {
     if (!id) return;
@@ -152,12 +205,6 @@ const Game = () => {
       mounted = false;
     };
   }, [id]);
-
-  useEffect(() => {
-    if (error) {
-      setErrorMessage("Error fetching playlists");
-    }
-  }, [error]);
 
   useEffect(() => {
     if (!gameId) return;
@@ -207,19 +254,17 @@ const Game = () => {
   }, [gameId, queryClient]);
 
   useEffect(() => {
-    if (game && !masterId) {
+    if (game?.master_id) {
       setMasterId(game.master_id);
     }
-  }, [game, masterId]);
+  }, [game?.master_id]);
 
-  // Keep currentUser in sync with Supabase (selections, votes, timeouts).
   useEffect(() => {
     if (!user?.id || !usersList.length) return;
     const row = usersList.find((u) => String(u.id) === String(user.id));
     if (row) setCurrentUser(row);
   }, [usersList, user?.id]);
 
-  // Keep UI in sync if DB already has master's pick (e.g. after refetch or missed realtime).
   useEffect(() => {
     if (!masterId || !usersList.length) return;
     const masterRow = usersList.find((u) => String(u.id) === String(masterId));
@@ -232,7 +277,94 @@ const Game = () => {
     }
   }, [usersList, masterId]);
 
-  // when usersList changes, fetch Spotify tracks for users that submitted my_song_id
+  // Deal this player a unique 6-song hand that does not overlap with anyone else.
+  useEffect(() => {
+    if (!isUserCreated || !currentUser || !gameId) return;
+    if (isUsersVoteState || isFinalState) return;
+    const existing = parseSongHand(currentUser.song_hand);
+    if (existing.length >= HAND_SIZE) return;
+    if (dealingRef.current) return;
+
+    dealingRef.current = true;
+    let mounted = true;
+
+    (async () => {
+      try {
+        const latest = await getUsersByGameId(gameId);
+        const used = usedSongIdsFromUsers(latest, String(currentUser.id));
+        const pool = await fetchUnusedSpotifyTracks(used, HAND_SIZE + 18);
+        const ids = pickUniqueHand(pool, used, HAND_SIZE);
+        if (!mounted) {
+          dealingRef.current = false;
+          return;
+        }
+        if (ids.length < HAND_SIZE) {
+          dealingRef.current = false;
+          if (ids.length === 0) {
+            setErrorMessage("Could not deal unique songs. Try refreshing.");
+          }
+          return;
+        }
+        await updateUser(String(currentUser.id), { song_hand: ids });
+        if (!mounted) {
+          dealingRef.current = false;
+          return;
+        }
+        handleUserSaved(String(currentUser.id), { song_hand: ids });
+        dealingRef.current = false;
+      } catch (err) {
+        console.error("Failed to deal song hand", err);
+        if (mounted) {
+          setErrorMessage(
+            "Could not save your song list. Add a song_hand column on users in Supabase, then refresh.",
+          );
+        }
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    currentHandKey,
+    currentUser?.id,
+    gameId,
+    handleUserSaved,
+    isFinalState,
+    isUserCreated,
+    isUsersVoteState,
+  ]);
+
+  // Personal hand during pick phases; all submissions during voting.
+  useEffect(() => {
+    if (isUsersVoteState || isFinalState) return;
+
+    const hand = parseSongHand(currentUser?.song_hand);
+    if (hand.length === 0) {
+      setTracks([]);
+      return;
+    }
+
+    let mounted = true;
+    setTracksLoading(true);
+
+    (async () => {
+      try {
+        const fetched = await getSpotifyTracksByIds(hand);
+        if (!mounted) return;
+        setTracks(fetched.map((t) => toSpotifyListItem(t)));
+      } catch (err) {
+        console.error("Failed to load personal song hand", err);
+      } finally {
+        if (mounted) setTracksLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [currentHandKey, currentUser?.song_hand, isFinalState, isUsersVoteState]);
+
   useEffect(() => {
     if (!usersList || usersList.length === 0) return;
     let mounted = true;
@@ -243,7 +375,6 @@ const Game = () => {
 
     if (pending.length === 0) return;
 
-    // fetch all pending tracks
     (async () => {
       try {
         const promises = pending.map(async (u) => {
@@ -262,7 +393,6 @@ const Game = () => {
           userId: string;
           track: any;
         }>;
-        console.log("newItems", newItems);
 
         if (newItems.length > 0) {
           setSelectedSongsList((prev) => [...prev, ...newItems]);
@@ -277,22 +407,26 @@ const Game = () => {
     };
   }, [usersList]);
 
-  // Clear "time is up" when entering a timed phase so the new Timer instance can run.
   useEffect(() => {
     const prev = prevGameStateRef.current;
     const next = game?.state;
 
-    if (
-      next === GameState.USERS_VOTE &&
-      prev !== GameState.USERS_VOTE
-    ) {
+    if (next === GameState.USERS_VOTE && prev !== GameState.USERS_VOTE) {
       setTimeIsUp(false);
+      setSelectedTrack(null);
+      votePhaseFinalizeRef.current = false;
     } else if (
       next === GameState.USERS_SELECT &&
       prev !== GameState.USERS_SELECT
     ) {
       setTimeIsUp(false);
+      setSelectedTrack(null);
       selectPhaseFinalizeRef.current = false;
+    } else if (
+      next === GameState.MASTER_SELECTS &&
+      prev === GameState.FINAL
+    ) {
+      resetLocalRound();
     }
 
     prevGameStateRef.current = next;
@@ -300,9 +434,8 @@ const Game = () => {
     if (next === GameState.USERS_VOTE && id) {
       void refreshUsersForGame(queryClient, gameId);
     }
-  }, [game?.state, gameId, queryClient]);
+  }, [game?.state, gameId, id, queryClient, resetLocalRound]);
 
-  // Vote phase: show every player's submitted song (my_song_id) from Supabase.
   useEffect(() => {
     if (game?.state !== GameState.USERS_VOTE) return;
 
@@ -333,11 +466,17 @@ const Game = () => {
         );
 
         if (!mounted) return;
-        setTracks(
-          results
-            .filter((t) => t != null && t.id)
-            .map((t) => toSpotifyListItem(t)),
-        );
+        const unique: ISpotifyTrackItem[] = [];
+        const seen = new Set<string>();
+        const sorted = [...results]
+          .filter((t) => t != null && t.id)
+          .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+        for (const t of sorted) {
+          if (seen.has(t.id)) continue;
+          seen.add(t.id);
+          unique.push(toSpotifyListItem(t));
+        }
+        setTracks(unique);
       } catch (err) {
         console.error("Error loading vote-phase tracks:", err);
       } finally {
@@ -353,11 +492,9 @@ const Game = () => {
   useEffect(() => {
     if (!id || !game?.state) return;
 
-    const nonMasterUsers = usersList.filter((u) => u.id !== masterId);
-    const randomTrackIdFromPool = (pool: Array<{ id: string }>) => {
-      if (!pool.length) return "";
-      return pool[Math.floor(Math.random() * pool.length)]?.id ?? "";
-    };
+    const nonMasterUsers = usersList.filter(
+      (u) => String(u.id) !== String(masterId),
+    );
 
     const moveToState = async (nextState: GameState) => {
       const isTimed =
@@ -397,92 +534,100 @@ const Game = () => {
     };
 
     if (game.state === GameState.MASTER_SELECTS) {
-      if (masterVoted) {
+      if (masterVoted && !waitingForPlayers) {
         void moveToState(GameState.USERS_SELECT);
       }
       return;
     }
 
     if (game.state === GameState.USERS_SELECT) {
-      const finalizeSelectPhaseOnTimeout = async () => {
-        if (!timeIsUp || selectPhaseFinalizeRef.current) return;
-        selectPhaseFinalizeRef.current = true;
-
-        const selectionPool = tracks.slice(0, 6).filter((t) => !!t?.id);
-        const usersNeedingSong = nonMasterUsers.filter(
+      const allNonMasterSelected =
+        nonMasterUsers.length > 0 &&
+        nonMasterUsers.every(
           (u) =>
-            typeof u.my_song_id !== "string" || u.my_song_id.trim().length === 0,
+            typeof u.my_song_id === "string" && u.my_song_id.trim().length > 0,
         );
 
-        if (selectionPool.length > 0 && usersNeedingSong.length > 0) {
-          await Promise.all(
-            usersNeedingSong.map(async (u) => {
-              const { error } = await supabase
-                .from("users")
-                .update({
-                  my_song_id: randomTrackIdFromPool(selectionPool),
-                  my_song_voted: true,
-                })
-                .eq("id", u.id.toString());
+      if (!allNonMasterSelected && !timeIsUp) return;
 
-              if (error) {
-                console.error(
-                  "Failed to auto-assign my_song_id on timeout for user",
-                  u.id,
-                  error,
-                );
-              }
-            }),
+      const finalizeSelectPhase = async () => {
+        if (selectPhaseFinalizeRef.current) return;
+        selectPhaseFinalizeRef.current = true;
+
+        if (!allNonMasterSelected) {
+          const usersNeedingSong = nonMasterUsers.filter(
+            (u) =>
+              typeof u.my_song_id !== "string" ||
+              u.my_song_id.trim().length === 0,
           );
 
-          await refreshUsersForGame(queryClient, gameId);
+          if (usersNeedingSong.length > 0) {
+            await Promise.all(
+              usersNeedingSong.map(async (u) => {
+                const pick = randomTrackIdFromPool(
+                  parseSongHand(u.song_hand).map((songId) => ({ id: songId })),
+                );
+                if (!pick) return;
+                const { error } = await supabase
+                  .from("users")
+                  .update({
+                    my_song_id: pick,
+                    my_song_voted: true,
+                  })
+                  .eq("id", u.id.toString());
+
+                if (error) {
+                  console.error(
+                    "Failed to auto-assign my_song_id on timeout for user",
+                    u.id,
+                    error,
+                  );
+                }
+              }),
+            );
+
+            await refreshUsersForGame(queryClient, gameId);
+          }
         }
 
         await moveToState(GameState.USERS_VOTE);
       };
 
-      void finalizeSelectPhaseOnTimeout();
+      void finalizeSelectPhase();
       return;
     }
 
     if (game.state === GameState.USERS_VOTE) {
-      const assignMissingMasterSongIdsOnTimeout = async () => {
-        if (!timeIsUp) return;
-        if (!currentUser || currentUser.id === masterId) return;
-        if (
-          typeof currentUser.master_song_id === "string" &&
-          currentUser.master_song_id.trim().length > 0
-        ) {
-          return;
-        }
-
-        const votePool = tracks.filter((t) => !!t?.id);
-        if (votePool.length === 0) return;
-
-        const { error } = await supabase
-          .from("users")
-          .update({
-            master_song_id: randomTrackIdFromPool(votePool),
-            master_song_voted: true,
-          })
-          .eq("id", currentUser.id.toString());
-
-        if (error) {
-          console.error(
-            "Failed to auto-assign master_song_id on timeout",
-            error,
-          );
-        }
-      };
-      void assignMissingMasterSongIdsOnTimeout();
-
       const allNonMasterUsersVoted =
         nonMasterUsers.length > 0 &&
         nonMasterUsers.every((u) => toBool(u.master_song_voted));
 
-      if (allNonMasterUsersVoted) {
-        void moveToState(GameState.FINAL);
-      }
+      if (!allNonMasterUsersVoted && !timeIsUp) return;
+
+      const completeVotePhase = async () => {
+        if (votePhaseFinalizeRef.current) return;
+        votePhaseFinalizeRef.current = true;
+        try {
+          const updated = await finalizeVoteRound({
+            gameId: id.toString(),
+            masterId: String(masterId ?? ""),
+            votePool: tracks,
+          });
+          if (updated) {
+            setGame((prev) =>
+              prev
+                ? { ...prev, ...updated, state: GameState.FINAL }
+                : prev,
+            );
+            await refreshUsersForGame(queryClient, gameId);
+          }
+        } catch (err) {
+          console.error("Failed to finalize vote round", err);
+          votePhaseFinalizeRef.current = false;
+        }
+      };
+
+      void completeVotePhase();
     }
   }, [
     id,
@@ -494,21 +639,20 @@ const Game = () => {
     tracks,
     currentUser,
     queryClient,
+    gameId,
+    waitingForPlayers,
   ]);
 
   useEffect(() => {
-    // If we don't know auth state yet, wait
     if (!id) return;
     if (authLoading) return;
     if (!user) {
       if (window.location.pathname === "/login") return;
 
-      // redirect to login and include returnTo so user comes back to this game
       navigate(`/login?returnTo=/game/${id}`);
       return;
     }
     (async () => {
-      // Verify spotify session validity; if invalid, sign out and redirect to login
       const valid = await isSpotifySessionValid();
       if (!valid) {
         await signOut();
@@ -531,12 +675,16 @@ const Game = () => {
         });
       }
     })();
-    // Depend on `user?.id` only so TOKEN_REFRESHED (new session object, same id) does not re-run join.
   }, [id, user?.id, authLoading, navigate, queryClient]);
 
   useEffect(() => {
+    if (waitingForPlayers && isMasterSelectState) {
+      setIsButtonSelectDisabled(true);
+      return;
+    }
+
     if (game?.state === GameState.USERS_VOTE) {
-      if (currentUser?.id === masterId) {
+      if (isCurrentMaster) {
         setIsButtonSelectDisabled(true);
       } else {
         setIsButtonSelectDisabled(!!currentUser?.master_song_voted);
@@ -544,7 +692,7 @@ const Game = () => {
       return;
     }
 
-    if (currentUser?.id === masterId) {
+    if (isCurrentMaster) {
       setIsButtonSelectDisabled(!!masterVoted);
     } else {
       setIsButtonSelectDisabled(!masterVoted);
@@ -557,27 +705,73 @@ const Game = () => {
     masterId,
     selectedTrack,
     masterVoted,
+    waitingForPlayers,
+    isMasterSelectState,
+    isCurrentMaster,
   ]);
+
+  const phaseMessage = (() => {
+    if (waitingForPlayers) {
+      return `Waiting for players (${onlinePlayers.length}/${RECOMMENDED_PLAYERS_MIN} recommended, max ${MAX_PLAYERS}). Share the link to invite friends.`;
+    }
+    if (isFinalState) return null;
+    if (isUsersVoteState) {
+      return isCurrentMaster
+        ? "Everyone can see all chosen songs, including yours. Players have 2 minutes to vote. You do not vote."
+        : "These are everyone’s chosen songs, including the Master’s. Vote for the song you think the Master picked. You cannot vote for your own song.";
+    }
+    if (isUsersSelectState) {
+      return isCurrentMaster
+        ? "Say your clue on the phone. Other players are picking a song from their own lists."
+        : "Pick 1 song from your list that matches the Master’s clue (said on the phone). You have 2 minutes.";
+    }
+    if (isMasterSelectState) {
+      return isCurrentMaster
+        ? "Pick 1 song from your list, then say a clue on the phone. Do not type the clue in the app."
+        : "These are your songs. Wait for the Master to pick a song and say a clue on the phone.";
+    }
+    return null;
+  })();
+
+  const showPersonalHand =
+    isUserCreated &&
+    !waitingForPlayers &&
+    (isMasterSelectState || (isUsersSelectState && !isCurrentMaster));
+  const showVoteSongs = isUserCreated && isUsersVoteState;
+  const showSongs = showPersonalHand || showVoteSongs;
 
   return (
     <div className="flex flex-row items-start p-4">
-      {isLoading && !isUserCreated ? <p>Loading...</p> : null}
+      {tracksLoading && !isUserCreated ? <p>Loading...</p> : null}
       {errorMessage && <p>{errorMessage}</p>}
-      <SongsList
-        tracks={tracks ? tracks : []}
-        isUserCreated={isUserCreated}
-        selectedTrack={selectedTrack}
-        setSelectedTrack={setSelectedTrack}
-        isSelectDisabled={isButtonSelectDisabled}
-        timeIsUp={timeIsUp}
-        isVotePhase={isUsersVoteState}
-        tracksLoading={tracksLoading}
-        masterId={masterId}
-        currentUser={currentUser}
-        onUserSaved={handleUserSaved}
-      />
+      {isFinalState ? (
+        <RoundResults
+          usersList={usersList}
+          masterId={masterId}
+          tracksById={tracksById}
+          onNextRound={() => void handleNextRound()}
+          nextRoundLoading={nextRoundLoading}
+        />
+      ) : showSongs ? (
+        <SongsList
+          tracks={tracks}
+          isUserCreated={isUserCreated}
+          selectedTrack={selectedTrack}
+          setSelectedTrack={setSelectedTrack}
+          isSelectDisabled={isButtonSelectDisabled}
+          timeIsUp={timeIsUp}
+          isVotePhase={isUsersVoteState}
+          tracksLoading={tracksLoading}
+          masterId={masterId}
+          currentUser={currentUser}
+          onUserSaved={handleUserSaved}
+          hideConfirm={isMasterSelectState && !isCurrentMaster}
+          confirmLabel={isUsersVoteState ? "Vote" : "Select"}
+        />
+      ) : (
+        <div className="flex-1 min-h-[12rem]" />
+      )}
       <div className="flex flex-col items-center">
-        {" "}
         {usersList.length > 0 && (
           <PlayersList
             usersList={usersList}
@@ -586,36 +780,11 @@ const Game = () => {
           />
         )}
         <CopyLink />
-        {isUsersVoteState ? (
-          user?.id === masterId ? (
-            <p className={messageStyle}>
-              Players have 2 minutes to vote for a song. You can listen to some
-              music while they vote.
-            </p>
-          ) : (
-            <p className={messageStyle}>
-              You have 2 minutes to vote for the song you think the master
-              selected.
-            </p>
-          )
-        ) : masterVoted ? (
-          user?.id === masterId ? (
-            <p className={messageStyle}>
-              Players have 2min. to select a song. You can listen some music in
-              the mean time.
-            </p>
-          ) : (
-            <p className={messageStyle}>
-              The master selected a song! Now you have 2 minutes to select a
-              song.
-            </p>
-          )
-        ) : null}
-        {(isUsersSelectState || isUsersVoteState) &&
-        game?.timer_started_at ? (
+        {phaseMessage ? <p className={messageStyle}>{phaseMessage}</p> : null}
+        {(isUsersSelectState || isUsersVoteState) && game?.timer_started_at ? (
           <Timer
             key={game.state}
-            timeSec={120}
+            timeSec={GAME_TIMER_DURATION_SEC}
             startedAt={game.timer_started_at}
             onFinish={handleTimerFinish}
           />

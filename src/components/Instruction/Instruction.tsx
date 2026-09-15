@@ -16,7 +16,8 @@ export const instructionData = [
     ),
     steps: [
       "The game supports 4-6 players.",
-      "Each player sees 6 songs from which they will choose during the game.",
+      "Each player gets a different list of 6 songs.",
+      "Players talk on the phone. Clues are spoken, not typed in the app.",
       "First Master is a player that created the game.",
     ],
   },
@@ -31,22 +32,22 @@ export const instructionData = [
       {
         subTitle: "Master’s Role",
         steps: [
-          "The Master looks at the 6 songs.",
+          "The Master looks at their own 6 songs.",
           "Secretly chooses 1 song.",
-          "Gives a clue about the chosen song (word, phrase, lyric snippet, humming, rhythm, emotion, etc.).",
+          "Says a clue on the phone about the chosen song (word, phrase, lyric snippet, humming, rhythm, emotion, etc.).",
         ],
       },
       {
         subTitle: "Players’ Role (2 min. selection)",
         steps: [
-          "Each other player has 2 minutes to select 1 song that best matches the Master’s clue.",
+          "Each other player has 2 minutes to select 1 song from their own list that best matches the Master’s clue.",
           "If a player does not choose within 2 minutes, a random song is selected automatically.",
         ],
       },
       {
         subTitle: "Display & Voting (2 min. voting)",
         steps: [
-          "Selected songs are revealed.",
+          "Everyone sees all selected songs, including the Master’s song.",
           "All players (except the Master) have 2 minutes to vote for the song they believe belongs to the Master.",
           "Players cannot vote for their own submitted song.",
           "After 2 minutes, votes are revealed.",

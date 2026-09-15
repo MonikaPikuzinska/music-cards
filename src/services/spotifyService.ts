@@ -76,13 +76,13 @@ export const fetchSpotifyPlaylists = async () => {
   return spotifyApiRequest("/me/playlists");
 };
 
-export const fetchSpotifyRandomSearch = async () => {
+export const fetchSpotifyRandomSearch = async (limit = 50) => {
   return spotifyApiRequest("/search", {
     params: {
       q: getRandomSearch(),
       offset: Math.floor(Math.random() * 1000),
       type: "track",
-      limit: 12,
+      limit,
     },
   });
 };
@@ -91,3 +91,45 @@ export const fetchSpotifyRandomSearch = async () => {
 export const getSpotifyTrack = async (trackId: string) => {
   return spotifyApiRequest(`/tracks/${encodeURIComponent(trackId)}`);
 };
+
+export const getSpotifyTracksByIds = async (trackIds: string[]) => {
+  const ids = [...new Set(trackIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  const data = await spotifyApiRequest<{
+    tracks: Array<{
+      id: string;
+      external_urls?: { spotify?: string };
+    } | null>;
+  }>("/tracks", {
+    params: { ids: ids.slice(0, 50).join(",") },
+  });
+
+  return (data.tracks ?? []).filter(
+    (track): track is NonNullable<typeof track> => track != null && !!track.id,
+  );
+};
+
+export async function fetchUnusedSpotifyTracks(
+  excludeIds: Set<string>,
+  needed: number,
+): Promise<Array<{ id: string; external_urls?: { spotify?: string } }>> {
+  const found: Array<{ id: string; external_urls?: { spotify?: string } }> = [];
+  const seen = new Set(excludeIds);
+  let attempts = 0;
+
+  while (found.length < needed && attempts < 8) {
+    attempts += 1;
+    const data = await fetchSpotifyRandomSearch(50);
+    const items = data?.tracks?.items ?? [];
+    for (const item of items) {
+      const id = String(item?.id ?? "").trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      found.push(item);
+      if (found.length >= needed) break;
+    }
+  }
+
+  return found;
+}

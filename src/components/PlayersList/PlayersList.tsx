@@ -13,7 +13,7 @@ interface PlayersListProps {
   gameState?: GameState;
 }
 
-function shouldShowVotedCheck(
+export function shouldShowVotedCheck(
   u: IUser,
   gameState: GameState | undefined,
   masterId: UUIDTypes | null,
@@ -48,19 +48,25 @@ const PlayersList: React.FC<PlayersListProps> = ({
         .filter((u) => isLoggedIn(u))
         .map((u) => {
           const showCheck = shouldShowVotedCheck(u, gameState, masterId);
+          const isMaster = String(masterId) === String(u.id);
           return (
-            <li key={String(u.id)}>
+            <li key={String(u.id)} className="mb-1">
               <FontAwesomeIcon
                 icon={icons[u.avatar as keyof typeof icons]}
                 className="text-indigo-400"
               />
               <span
                 className={`ml-2 mr-2 font-bold ${
-                  masterId === u.id ? "text-indigo-600" : ""
+                  isMaster ? "text-indigo-600" : ""
                 }`}
               >
                 {u.name}
               </span>
+              {isMaster ? (
+                <span className="mr-2 text-xs font-semibold uppercase tracking-wide text-indigo-500">
+                  Master
+                </span>
+              ) : null}
               <span className="mr-2">{`${u.points} ${
                 u.points === 1 ? "point" : "points"
               }`}</span>

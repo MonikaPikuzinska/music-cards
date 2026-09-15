@@ -3,13 +3,19 @@ import React from "react";
 interface ButtonProps {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 }
 
-const Button: React.FC<ButtonProps> = ({ label, onClick }) => {
+const Button: React.FC<ButtonProps> = ({ label, onClick, disabled = false }) => {
   return (
     <button
       onClick={onClick}
-      className="bg-indigo-400 text-amber-50 px-3 cursor-pointer py-1 rounded mt-3"
+      disabled={disabled}
+      className={`px-3 py-1 rounded mt-3 ${
+        disabled
+          ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+          : "bg-indigo-400 text-amber-50 cursor-pointer"
+      }`}
     >
       {label}
     </button>

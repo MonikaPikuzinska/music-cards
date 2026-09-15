@@ -14,12 +14,16 @@ interface SpotifyProps extends HTMLAttributes<HTMLIFrameElement> {
   allow?: string;
   isSelected: boolean;
   onSelect: () => void;
+  disabled?: boolean;
+  badge?: string;
 }
 
 const SpotifyPlayer = ({
   link,
   isSelected,
   onSelect,
+  disabled = false,
+  badge,
   style = {},
   wide = false,
   width = wide ? "100%" : 300,
@@ -34,9 +38,18 @@ const SpotifyPlayer = ({
   url.pathname = url.pathname.replace(/\/intl-\w+\//, "/");
   return (
     <div
-      className="m-2 flex flex-col items-center cursor-pointer"
-      onClick={onSelect}
+      className={`m-2 flex flex-col items-center ${
+        disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+      }`}
+      onClick={() => {
+        if (!disabled) onSelect();
+      }}
     >
+      {badge ? (
+        <span className="mb-1 text-xs font-semibold text-indigo-500">
+          {badge}
+        </span>
+      ) : null}
       <div className="flex items-center">
         {" "}
         <FontAwesomeIcon
@@ -66,8 +79,8 @@ const SpotifyPlayer = ({
       <iframe
         title="Spotify Web Player"
         src={`https://open.spotify.com/embed${url.pathname}`}
-        width={`${width}px`}
-        height={`${height}px`}
+        width={typeof width === "number" ? `${width}px` : width}
+        height={typeof height === "number" ? `${height}px` : height}
         frameBorder={frameBorder}
         allow={allow}
         style={{

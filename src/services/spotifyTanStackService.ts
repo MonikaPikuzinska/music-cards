@@ -16,7 +16,7 @@ export function useSpotifyPlaylists() {
 export function useSpotifyRandomSearch() {
   return useQuery({
     queryKey: ["spotify", "randomSearch"],
-    queryFn: fetchSpotifyRandomSearch,
+    queryFn: () => fetchSpotifyRandomSearch(),
     retry: false,
     // We only want this to load once when the page opens.
     // Disable automatic refetches so it doesn't keep refreshing tracks.

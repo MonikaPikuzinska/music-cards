@@ -4,6 +4,7 @@ import { getUsersByGameId } from "../api/api";
 import { IUser } from "../api/interface";
 import { isLoggedIn } from "./isLoggedIn";
 import { normalizeUser } from "./normalizeUser";
+import { parseSongHand } from "./songHand";
 
 type UsersRow = Record<string, unknown>;
 
@@ -47,7 +48,8 @@ function hasVoteFieldUpdate(row: UsersRow | null | undefined): boolean {
     row.my_song_voted !== undefined ||
     row.master_song_voted !== undefined ||
     row.my_song_id !== undefined ||
-    row.master_song_id !== undefined
+    row.master_song_id !== undefined ||
+    row.song_hand !== undefined
   );
 }
 
@@ -64,6 +66,10 @@ function mergeVoteFields(prevU: IUser, freshU: IUser): IUser {
     master_song_voted: prevU.master_song_voted || freshU.master_song_voted,
     my_song_id: pickSongId(prevU.my_song_id, freshU.my_song_id),
     master_song_id: pickSongId(prevU.master_song_id, freshU.master_song_id),
+    song_hand:
+      parseSongHand(freshU.song_hand).length > 0
+        ? parseSongHand(freshU.song_hand)
+        : parseSongHand(prevU.song_hand),
   });
 }
 

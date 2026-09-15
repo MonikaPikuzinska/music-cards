@@ -9,6 +9,7 @@ import { supabase } from "../supabase-client";
 import getRandomAvatar from "../utils/getRandomAvatar";
 import { IUser } from "../api/interface";
 import { markRecentJoin } from "../utils/usersQueryCache";
+import { MAX_PLAYERS } from "../constants/game";
 
 interface HandleUserJoinGameParams {
   id: UUIDTypes | string;
@@ -39,7 +40,7 @@ export const handleUserJoinGame = async ({
     const users: IUser[] = await syncPlayersList();
 
     // Check for max players first
-    if (users.length >= 6) {
+    if (users.length >= MAX_PLAYERS) {
       setIsUserCreated(true);
       setErrorMessage("Too many players");
       return;
@@ -92,6 +93,7 @@ export const handleUserJoinGame = async ({
           my_song_id: "",
           master_song_id: "",
           is_logged: true,
+          song_hand: [],
         });
         const merged = {
           ...existingUserGlobal,
@@ -101,6 +103,7 @@ export const handleUserJoinGame = async ({
           master_song_voted: false,
           my_song_id: "",
           master_song_id: "",
+          song_hand: [],
         };
         setCurrentUser(merged);
         setIsUserCreated(true);
@@ -126,6 +129,7 @@ export const handleUserJoinGame = async ({
         my_song_id: "",
         master_song_id: "",
         is_logged: true,
+        song_hand: [],
       };
       markRecentJoin(String(user.id));
       setCurrentUser(newUser);

@@ -18,11 +18,23 @@ export const createUser = async (user: IUser) => {
 };
 
 export const updateUser = async (userId: string, updates: Partial<IUser>) => {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("users")
     .update(updates)
     .eq("id", userId)
     .select();
+
+  if (error && /song_hand/i.test(error.message)) {
+    const stripped = { ...updates };
+    delete stripped.song_hand;
+    const retried = await supabase
+      .from("users")
+      .update(stripped)
+      .eq("id", userId)
+      .select();
+    data = retried.data;
+    error = retried.error;
+  }
 
   if (error) throw new Error(error.message);
   return data;
@@ -111,6 +123,7 @@ export const createGameBoardDB = async (userData: IUser) => {
         my_song_id: userData.my_song_id,
         master_song_id: userData.master_song_id,
         is_logged: userData.is_logged,
+        song_hand: userData.song_hand ?? [],
       });
     }
   });
@@ -139,4 +152,40 @@ export async function getUsersByGameId(gameId: string) {
     throw error;
   }
   return (data ?? []).map((row) => normalizeUser(row as IUser));
+}
+
+const UNKNOWN_COLUMN = /clue|scores_applied/i;
+
+function stripOptionalGameColumns(updates: Partial<IGame>): Partial<IGame> {
+  const next = { ...updates };
+  delete next.clue;
+  delete next.scores_applied;
+  return next;
+}
+
+export async function updateGame(
+  gameId: string,
+  updates: Partial<IGame>,
+  match: Partial<IGame> = {},
+) {
+  let query = supabase.from("games").update(updates).eq("id", gameId);
+  if (match.state != null) {
+    query = query.eq("state", match.state);
+  }
+
+  let { data, error } = await query.select();
+
+  if (error && UNKNOWN_COLUMN.test(error.message)) {
+    const stripped = stripOptionalGameColumns(updates);
+    let retry = supabase.from("games").update(stripped).eq("id", gameId);
+    if (match.state != null) {
+      retry = retry.eq("state", match.state);
+    }
+    const retried = await retry.select();
+    data = retried.data;
+    error = retried.error;
+  }
+
+  if (error) throw new Error(error.message);
+  return (data ?? []) as IGame[];
 }

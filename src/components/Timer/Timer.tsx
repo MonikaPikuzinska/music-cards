@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { calcTimeLeft, formatMMSS } from "../../utils/timerMath";
 
 interface TimerProps {
   /** Total duration of the phase in seconds (e.g. 120). */
@@ -7,19 +8,6 @@ interface TimerProps {
   startedAt: string;
   onFinish?: () => void;
 }
-
-const calcTimeLeft = (timeSec: number, startedAt: string): number => {
-  const elapsed = Math.floor(
-    (Date.now() - new Date(startedAt).getTime()) / 1000,
-  );
-  return Math.max(0, timeSec - elapsed);
-};
-
-const formatMMSS = (seconds: number): string => {
-  const m = Math.floor(seconds / 60).toString().padStart(2, "0");
-  const s = (seconds % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
-};
 
 const Timer: React.FC<TimerProps> = ({ timeSec, startedAt, onFinish }) => {
   const [timeLeft, setTimeLeft] = useState(() => calcTimeLeft(timeSec, startedAt));

@@ -7,6 +7,10 @@ import { IUser } from "../../api/interface";
 import { useEffect, useState } from "react";
 import Button from "../../components/Button/Button";
 import getRandomAvatar from "../../utils/getRandomAvatar";
+import {
+  isValidGameLink,
+  parseGameIdFromLink,
+} from "../../utils/isValidGameLink";
 
 const Login = () => {
   const [gameId, setGameId] = useState<UUIDTypes>();
@@ -59,25 +63,10 @@ const Login = () => {
           my_song_id: "",
           master_song_id: "",
           is_logged: true,
+          song_hand: [],
         },
       });
   };
-
-  const isValidGameLink = (link: string): boolean => {
-    const sanitized = link.trim();
-
-    const hasGamePath = sanitized.includes("/game/");
-    // Only allow alphanumeric, dash, slash, and underscore after domain (very basic)
-    const validPattern = /^\/?game\/[\w-]+$/;
-    // Accept also full URLs like https://domain.com/game/xxxx
-    const validFullUrlPattern = /^https?:\/\/.+\/game\/[\w-]+$/;
-    return (
-      hasGamePath &&
-      (validPattern.test(sanitized) || validFullUrlPattern.test(sanitized))
-    );
-  };
-
-  console.log(user);
 
   return (
     <div className="flex  justify-center items-center flex-col h-100">
@@ -122,11 +111,9 @@ const Login = () => {
             <Button
               onClick={() => {
                 if (isValidGameLink(gameLink)) {
-                  const match =
-                    gameLink.match(/\/game\/([\w-]+)/) ||
-                    gameLink.match(/game\/([\w-]+)/);
-                  if (match && match[1]) {
-                    navigate(`/game/${match[1]}`);
+                  const parsedId = parseGameIdFromLink(gameLink);
+                  if (parsedId) {
+                    navigate(`/game/${parsedId}`);
                   }
                 } else {
                   setIsInvalidLink(true);
