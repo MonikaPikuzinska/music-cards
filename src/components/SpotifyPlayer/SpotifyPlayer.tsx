@@ -1,7 +1,7 @@
 import { faSquare, faSquareCheck } from "@fortawesome/free-regular-svg-icons";
 import { faMusic } from "@fortawesome/free-solid-svg-icons";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { type HTMLAttributes } from "react";
+import { memo, type HTMLAttributes } from "react";
 
 interface SpotifyProps extends HTMLAttributes<HTMLIFrameElement> {
   [key: string]: any;
@@ -36,9 +36,12 @@ const SpotifyPlayer = ({
   // https://open.spotify.com/track/1KFxcj3MZrpBGiGA8ZWriv?si=f024c3aa52294aa1
   // Remove any additional path segments
   url.pathname = url.pathname.replace(/\/intl-\w+\//, "/");
+  const iframeWidth = typeof width === "number" ? `${width}px` : width;
+  const iframeHeight = typeof height === "number" ? `${height}px` : height;
+
   return (
     <div
-      className={`m-2 flex flex-col items-center ${
+      className={`m-2 flex shrink-0 flex-col items-center ${
         disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
       }`}
       onClick={() => {
@@ -76,20 +79,36 @@ const SpotifyPlayer = ({
           }`}
         />
       </div>
-      <iframe
-        title="Spotify Web Player"
-        src={`https://open.spotify.com/embed${url.pathname}`}
-        width={typeof width === "number" ? `${width}px` : width}
-        height={typeof height === "number" ? `${height}px` : height}
-        frameBorder={frameBorder}
-        allow={allow}
-        style={{
-          borderRadius: 8,
-          ...style,
-        }}
-        {...props}
-      />
+      <div
+        className="overflow-hidden rounded-lg"
+        style={{ width: iframeWidth, height: iframeHeight }}
+      >
+        <iframe
+          title="Spotify Web Player"
+          src={`https://open.spotify.com/embed${url.pathname}`}
+          width={iframeWidth}
+          height={iframeHeight}
+          frameBorder={frameBorder}
+          allow={allow}
+          style={{
+            borderRadius: 8,
+            ...style,
+          }}
+          {...props}
+        />
+      </div>
     </div>
   );
 };
-export default SpotifyPlayer;
+
+export default memo(SpotifyPlayer, (prev, next) => {
+  return (
+    prev.link === next.link &&
+    prev.isSelected === next.isSelected &&
+    prev.disabled === next.disabled &&
+    prev.badge === next.badge &&
+    prev.wide === next.wide &&
+    prev.width === next.width &&
+    prev.height === next.height
+  );
+});

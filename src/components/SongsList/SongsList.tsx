@@ -102,8 +102,8 @@ const SongsList: React.FC<SongsListProps> = ({
   }, [timeIsUp, setSelectedTrack]);
 
   return (
-    <div className="flex flex-wrap justify-center items-center max-w-9/12">
-      {tracksLoading ? (
+    <div className="relative flex min-h-[28rem] w-full min-w-0 flex-wrap content-start items-start justify-center">
+      {tracksLoading && tracks.length === 0 ? (
         <p className="w-full text-center text-indigo-500 text-sm py-4">
           {isVotePhase
             ? "Loading everyone’s songs…"

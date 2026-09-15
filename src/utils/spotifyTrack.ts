@@ -19,3 +19,11 @@ export function toSpotifyListItem(track: {
     },
   };
 }
+
+export function sameTrackList(
+  prev: Array<{ id?: string }>,
+  next: Array<{ id?: string }>,
+): boolean {
+  if (prev.length !== next.length) return false;
+  return prev.every((track, i) => track.id === next[i]?.id);
+}

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { memo } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { icons } from "../../utils/getRandomAvatar";
 import { GameState, IUser } from "../../api/interface";
@@ -80,4 +80,4 @@ const PlayersList: React.FC<PlayersListProps> = ({
   </div>
 );
 
-export default PlayersList;
+export default memo(PlayersList);

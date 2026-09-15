@@ -27,7 +27,7 @@ import {
   refreshUsersForGame,
   usersQueryKey,
 } from "../../utils/usersQueryCache";
-import { toSpotifyListItem } from "../../utils/spotifyTrack";
+import { toSpotifyListItem, sameTrackList } from "../../utils/spotifyTrack";
 import { isLoggedIn } from "../../utils/isLoggedIn";
 import { randomTrackIdFromPool } from "../../utils/canVoteForTrack";
 import {
@@ -43,6 +43,7 @@ import {
   pickUniqueHand,
   usedSongIdsFromUsers,
 } from "../../utils/songHand";
+import { nonMasterPlayers, shouldFinalizeVotePhase } from "../../utils/votePhase";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -97,6 +98,10 @@ const Game = () => {
   const selectPhaseFinalizeRef = useRef(false);
   const votePhaseFinalizeRef = useRef(false);
   const dealingRef = useRef(false);
+  const loadedHandKeyRef = useRef("");
+  const loadedVoteKeyRef = useRef("");
+  const usersListRef = useRef(usersList);
+  usersListRef.current = usersList;
 
   const handleTimerFinish = useCallback(() => {
     setTimeIsUp(true);
@@ -120,6 +125,8 @@ const Game = () => {
     selectPhaseFinalizeRef.current = false;
     votePhaseFinalizeRef.current = false;
     dealingRef.current = false;
+    loadedHandKeyRef.current = "";
+    loadedVoteKeyRef.current = "";
   }, []);
 
   const handleNextRound = useCallback(async () => {
@@ -152,7 +159,9 @@ const Game = () => {
     .sort()
     .join("|");
 
-  const currentHandKey = parseSongHand(currentUser?.song_hand).join("|");
+  const currentHandKey = [...parseSongHand(currentUser?.song_hand)]
+    .sort()
+    .join("|");
 
   const onlinePlayers = usersList.filter((u) => isLoggedIn(u));
   const waitingForPlayers = onlinePlayers.length < MIN_PLAYERS_TO_START;
@@ -242,7 +251,16 @@ const Game = () => {
         },
         (payload) => {
           const newRec = payload.new as IGame | null;
-          if (newRec) setGame(newRec);
+          if (!newRec) return;
+          setGame((prev) => {
+            if (
+              prev?.state === GameState.FINAL &&
+              newRec.state === GameState.USERS_VOTE
+            ) {
+              return prev;
+            }
+            return newRec;
+          });
         },
       )
       .subscribe();
@@ -262,7 +280,24 @@ const Game = () => {
   useEffect(() => {
     if (!user?.id || !usersList.length) return;
     const row = usersList.find((u) => String(u.id) === String(user.id));
-    if (row) setCurrentUser(row);
+    if (!row) return;
+    setCurrentUser((prev) => {
+      if (
+        prev &&
+        String(prev.id) === String(row.id) &&
+        prev.name === row.name &&
+        prev.points === row.points &&
+        prev.my_song_id === row.my_song_id &&
+        prev.master_song_id === row.master_song_id &&
+        toBool(prev.my_song_voted) === toBool(row.my_song_voted) &&
+        toBool(prev.master_song_voted) === toBool(row.master_song_voted) &&
+        [...parseSongHand(prev.song_hand)].sort().join("|") ===
+          [...parseSongHand(row.song_hand)].sort().join("|")
+      ) {
+        return prev;
+      }
+      return row;
+    });
   }, [usersList, user?.id]);
 
   useEffect(() => {
@@ -335,24 +370,26 @@ const Game = () => {
     isUsersVoteState,
   ]);
 
-  // Personal hand during pick phases; all submissions during voting.
+  // Personal hand during pick phases. Do not refetch when the player list polls.
   useEffect(() => {
     if (isUsersVoteState || isFinalState) return;
 
     const hand = parseSongHand(currentUser?.song_hand);
-    if (hand.length === 0) {
-      setTracks([]);
-      return;
-    }
+    if (hand.length === 0) return;
+    if (loadedHandKeyRef.current === currentHandKey) return;
 
     let mounted = true;
-    setTracksLoading(true);
+    if (loadedHandKeyRef.current === "") {
+      setTracksLoading(true);
+    }
 
     (async () => {
       try {
         const fetched = await getSpotifyTracksByIds(hand);
         if (!mounted) return;
-        setTracks(fetched.map((t) => toSpotifyListItem(t)));
+        const next = fetched.map((t) => toSpotifyListItem(t));
+        setTracks((prev) => (sameTrackList(prev, next) ? prev : next));
+        loadedHandKeyRef.current = currentHandKey;
       } catch (err) {
         console.error("Failed to load personal song hand", err);
       } finally {
@@ -363,7 +400,7 @@ const Game = () => {
     return () => {
       mounted = false;
     };
-  }, [currentHandKey, currentUser?.song_hand, isFinalState, isUsersVoteState]);
+  }, [currentHandKey, isFinalState, isUsersVoteState]);
 
   useEffect(() => {
     if (!usersList || usersList.length === 0) return;
@@ -438,18 +475,21 @@ const Game = () => {
 
   useEffect(() => {
     if (game?.state !== GameState.USERS_VOTE) return;
+    if (!voteSongIdsKey || loadedVoteKeyRef.current === voteSongIdsKey) return;
 
     let mounted = true;
-    setTracksLoading(true);
+    if (loadedVoteKeyRef.current === "") {
+      setTracksLoading(true);
+    }
 
     (async () => {
       try {
-        const usersWithSong = usersList.filter(
+        const usersWithSong = usersListRef.current.filter(
           (u) => u.my_song_id && u.my_song_id.trim().length > 0,
         );
 
         if (usersWithSong.length === 0) {
-          if (mounted) setTracks([]);
+          if (mounted) setTracksLoading(false);
           return;
         }
 
@@ -476,7 +516,8 @@ const Game = () => {
           seen.add(t.id);
           unique.push(toSpotifyListItem(t));
         }
-        setTracks(unique);
+        setTracks((prev) => (sameTrackList(prev, unique) ? prev : unique));
+        loadedVoteKeyRef.current = voteSongIdsKey;
       } catch (err) {
         console.error("Error loading vote-phase tracks:", err);
       } finally {
@@ -487,14 +528,13 @@ const Game = () => {
     return () => {
       mounted = false;
     };
-  }, [game?.state, voteSongIdsKey, usersList]);
+  }, [game?.state, voteSongIdsKey]);
 
   useEffect(() => {
     if (!id || !game?.state) return;
 
-    const nonMasterUsers = usersList.filter(
-      (u) => String(u.id) !== String(masterId),
-    );
+    const masterIdStr = masterId != null ? String(masterId) : null;
+    const nonMasterUsers = nonMasterPlayers(usersList, masterIdStr);
 
     const moveToState = async (nextState: GameState) => {
       const isTimed =
@@ -598,19 +638,22 @@ const Game = () => {
     }
 
     if (game.state === GameState.USERS_VOTE) {
-      const allNonMasterUsersVoted =
-        nonMasterUsers.length > 0 &&
-        nonMasterUsers.every((u) => toBool(u.master_song_voted));
-
-      if (!allNonMasterUsersVoted && !timeIsUp) return;
+      if (!shouldFinalizeVotePhase(usersList, masterIdStr, timeIsUp)) return;
 
       const completeVotePhase = async () => {
         if (votePhaseFinalizeRef.current) return;
         votePhaseFinalizeRef.current = true;
+
+        setGame((prev) =>
+          prev && prev.state === GameState.USERS_VOTE
+            ? { ...prev, state: GameState.FINAL }
+            : prev,
+        );
+
         try {
           const updated = await finalizeVoteRound({
             gameId: id.toString(),
-            masterId: String(masterId ?? ""),
+            masterId: masterIdStr ?? "",
             votePool: tracks,
           });
           if (updated) {
@@ -620,7 +663,9 @@ const Game = () => {
                 : prev,
             );
             await refreshUsersForGame(queryClient, gameId);
+            return;
           }
+          votePhaseFinalizeRef.current = false;
         } catch (err) {
           console.error("Failed to finalize vote round", err);
           votePhaseFinalizeRef.current = false;
@@ -711,7 +756,12 @@ const Game = () => {
   ]);
 
   const phaseMessage = (() => {
-    if (waitingForPlayers) {
+    if (
+      waitingForPlayers &&
+      !isUsersSelectState &&
+      !isUsersVoteState &&
+      !isFinalState
+    ) {
       return `Waiting for players (${onlinePlayers.length}/${RECOMMENDED_PLAYERS_MIN} recommended, max ${MAX_PLAYERS}). Share the link to invite friends.`;
     }
     if (isFinalState) return null;
@@ -735,43 +785,45 @@ const Game = () => {
 
   const showPersonalHand =
     isUserCreated &&
-    !waitingForPlayers &&
-    (isMasterSelectState || (isUsersSelectState && !isCurrentMaster));
+    (isMasterSelectState
+      ? !waitingForPlayers
+      : Boolean(isUsersSelectState && !isCurrentMaster));
   const showVoteSongs = isUserCreated && isUsersVoteState;
   const showSongs = showPersonalHand || showVoteSongs;
 
   return (
-    <div className="flex flex-row items-start p-4">
-      {tracksLoading && !isUserCreated ? <p>Loading...</p> : null}
-      {errorMessage && <p>{errorMessage}</p>}
-      {isFinalState ? (
-        <RoundResults
-          usersList={usersList}
-          masterId={masterId}
-          tracksById={tracksById}
-          onNextRound={() => void handleNextRound()}
-          nextRoundLoading={nextRoundLoading}
-        />
-      ) : showSongs ? (
-        <SongsList
-          tracks={tracks}
-          isUserCreated={isUserCreated}
-          selectedTrack={selectedTrack}
-          setSelectedTrack={setSelectedTrack}
-          isSelectDisabled={isButtonSelectDisabled}
-          timeIsUp={timeIsUp}
-          isVotePhase={isUsersVoteState}
-          tracksLoading={tracksLoading}
-          masterId={masterId}
-          currentUser={currentUser}
-          onUserSaved={handleUserSaved}
-          hideConfirm={isMasterSelectState && !isCurrentMaster}
-          confirmLabel={isUsersVoteState ? "Vote" : "Select"}
-        />
-      ) : (
-        <div className="flex-1 min-h-[12rem]" />
-      )}
-      <div className="flex flex-col items-center">
+    <div className="grid w-full grid-cols-1 items-start gap-6 p-4 md:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="relative min-h-[28rem] min-w-0 w-full">
+        {errorMessage && <p>{errorMessage}</p>}
+        {isFinalState ? (
+          <RoundResults
+            usersList={usersList}
+            masterId={masterId}
+            tracksById={tracksById}
+            onNextRound={() => void handleNextRound()}
+            nextRoundLoading={nextRoundLoading}
+          />
+        ) : showSongs ? (
+          <SongsList
+            tracks={tracks}
+            isUserCreated={isUserCreated}
+            selectedTrack={selectedTrack}
+            setSelectedTrack={setSelectedTrack}
+            isSelectDisabled={isButtonSelectDisabled}
+            timeIsUp={timeIsUp}
+            isVotePhase={isUsersVoteState}
+            tracksLoading={tracksLoading}
+            masterId={masterId}
+            currentUser={currentUser}
+            onUserSaved={handleUserSaved}
+            hideConfirm={isMasterSelectState && !isCurrentMaster}
+            confirmLabel={isUsersVoteState ? "Vote" : "Select"}
+          />
+        ) : (
+          <div className="min-h-[28rem]" />
+        )}
+      </div>
+      <aside className="flex w-full flex-col items-center md:w-80">
         {usersList.length > 0 && (
           <PlayersList
             usersList={usersList}
@@ -789,7 +841,7 @@ const Game = () => {
             onFinish={handleTimerFinish}
           />
         ) : null}
-      </div>
+      </aside>
     </div>
   );
 };

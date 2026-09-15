@@ -187,5 +187,18 @@ export async function updateGame(
   }
 
   if (error) throw new Error(error.message);
-  return (data ?? []) as IGame[];
+  if (data && data.length > 0) return data as IGame[];
+
+  // Matched updates that return no rows either matched 0 records or RLS hid them.
+  // Let the caller re-read the row instead of treating this as a win.
+  if (match.state != null) return [];
+
+  const { data: fetched, error: fetchError } = await supabase
+    .from("games")
+    .select("*")
+    .eq("id", gameId)
+    .maybeSingle();
+
+  if (fetchError) throw new Error(fetchError.message);
+  return fetched ? [fetched as IGame] : [];
 }

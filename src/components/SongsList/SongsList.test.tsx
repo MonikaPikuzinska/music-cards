@@ -88,4 +88,22 @@ describe("SongsList perspectives", () => {
     expect(screen.getByRole("button", { name: "Your song" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "track" })).toBeEnabled();
   });
+
+  it("keeps existing songs visible while a later fetch is in progress", () => {
+    render(
+      <SongsList
+        tracks={[track("song-a")]}
+        isUserCreated
+        selectedTrack={null}
+        setSelectedTrack={() => undefined}
+        isSelectDisabled={false}
+        tracksLoading
+        masterId="master-1"
+        currentUser={player}
+        confirmLabel="Select"
+      />,
+    );
+    expect(screen.queryByText(/Loading/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "track" })).toBeInTheDocument();
+  });
 });

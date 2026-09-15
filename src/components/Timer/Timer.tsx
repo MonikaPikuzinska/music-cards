@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, memo } from "react";
 import { calcTimeLeft, formatMMSS } from "../../utils/timerMath";
 
 interface TimerProps {
@@ -10,38 +10,33 @@ interface TimerProps {
 }
 
 const Timer: React.FC<TimerProps> = ({ timeSec, startedAt, onFinish }) => {
-  const [timeLeft, setTimeLeft] = useState(() => calcTimeLeft(timeSec, startedAt));
+  const [timeLeft, setTimeLeft] = useState(() =>
+    calcTimeLeft(timeSec, startedAt),
+  );
   const finishedRef = useRef(false);
   const onFinishRef = useRef(onFinish);
   onFinishRef.current = onFinish;
 
-  // Re-sync whenever the anchor timestamp changes (new phase started).
   useEffect(() => {
     finishedRef.current = false;
-    setTimeLeft(calcTimeLeft(timeSec, startedAt));
-  }, [timeSec, startedAt]);
-
-  useEffect(() => {
-    if (timeLeft <= 0) {
-      if (!finishedRef.current) {
+    const tick = () => {
+      const left = calcTimeLeft(timeSec, startedAt);
+      setTimeLeft(left);
+      if (left <= 0 && !finishedRef.current) {
         finishedRef.current = true;
         onFinishRef.current?.();
       }
-      return;
-    }
-
-    const id = setInterval(() => {
-      setTimeLeft(calcTimeLeft(timeSec, startedAt));
-    }, 1000);
-
-    return () => clearInterval(id);
-  }, [timeLeft, timeSec, startedAt]);
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [timeSec, startedAt]);
 
   return (
-    <div>
-      <p className="w-72 rounded-lg bg-indigo-50 text-indigo-600 px-4 py-3 mt-3 text-center font-semibold shadow-sm">
+    <div className="w-72 shrink-0">
+      <p className="rounded-lg bg-indigo-50 text-indigo-600 px-4 py-3 mt-3 text-center font-semibold shadow-sm">
         <span className="block text-sm text-indigo-500">Time left</span>
-        <span className="block text-2xl font-bold mt-1">
+        <span className="block text-2xl font-bold mt-1 tabular-nums">
           {formatMMSS(timeLeft)}
         </span>
       </p>
@@ -49,4 +44,4 @@ const Timer: React.FC<TimerProps> = ({ timeSec, startedAt, onFinish }) => {
   );
 };
 
-export default Timer;
+export default memo(Timer);

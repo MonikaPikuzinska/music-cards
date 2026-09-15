@@ -1,5 +1,5 @@
 import { GameState, IGame, IUser } from "../api/interface";
-import { getUsersByGameId, updateGame, updateUser } from "../api/api";
+import { getGameById, getUsersByGameId, updateGame, updateUser } from "../api/api";
 import { calculateRoundScores } from "../utils/scoring";
 import { getNextMaster } from "../utils/nextMaster";
 import { randomTrackIdFromPool } from "../utils/canVoteForTrack";
@@ -61,17 +61,50 @@ export async function finalizeVoteRound(params: {
 }): Promise<IGame | null> {
   const { gameId, masterId, votePool = [] } = params;
 
-  const won = await updateGame(
+  const existing = await getGameById(gameId);
+  if (existing.state === GameState.FINAL) {
+    return existing;
+  }
+  if (existing.state !== GameState.USERS_VOTE) {
+    return null;
+  }
+
+  const locked = await updateGame(
     gameId,
     { state: GameState.FINAL, scores_applied: true },
     { state: GameState.USERS_VOTE },
   );
-  if (won.length === 0) return null;
+
+  const latest =
+    locked[0] ??
+    (await getGameById(gameId).catch(() => null));
+
+  if (latest?.state !== GameState.FINAL) {
+    const forced = await updateGame(gameId, {
+      state: GameState.FINAL,
+      scores_applied: true,
+    });
+    const afterForce = forced[0] ?? (await getGameById(gameId));
+    if (afterForce.state !== GameState.FINAL) return null;
+    let users = await getUsersByGameId(gameId);
+    users = await assignMissingVotes(users, masterId, votePool);
+    await applyRoundScores(users, masterId);
+    return { ...afterForce, state: GameState.FINAL, scores_applied: true };
+  }
+
+  // Another client already moved the game to FINAL.
+  if (locked.length === 0) {
+    return latest;
+  }
+
+  if (existing.scores_applied) {
+    return { ...latest, state: GameState.FINAL };
+  }
 
   let users = await getUsersByGameId(gameId);
   users = await assignMissingVotes(users, masterId, votePool);
   await applyRoundScores(users, masterId);
-  return won[0];
+  return { ...latest, state: GameState.FINAL, scores_applied: true };
 }
 
 const ROUND_RESET: Partial<IUser> = {
