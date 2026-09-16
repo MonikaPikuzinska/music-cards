@@ -1,7 +1,7 @@
 import { IUser } from "../api/interface";
 import { isLoggedIn } from "./isLoggedIn";
 
-const byNameThenId = (a: IUser, b: IUser) => {
+export const byNameThenId = (a: { name: string; id: unknown }, b: { name: string; id: unknown }) => {
   const names = a.name.localeCompare(b.name, undefined, {
     sensitivity: "base",
   });
@@ -9,17 +9,20 @@ const byNameThenId = (a: IUser, b: IUser) => {
   return String(a.id).localeCompare(String(b.id));
 };
 
-/** Next Master is the next logged-in player in alphabetical name order (wraps). */
+/** Next Master is the next player in alphabetical name order (wraps). */
 export function getNextMaster(
   users: IUser[],
   currentMasterId: string | null | undefined,
 ): IUser | null {
-  const seated = users.filter(isLoggedIn).sort(byNameThenId);
-  if (seated.length === 0) return null;
+  const all = [...users].sort(byNameThenId);
+  const seated = all.filter(isLoggedIn);
+  // Need 2+ seated players to skip logged-out; otherwise still rotate in a pair.
+  const pool = seated.length >= 2 ? seated : all;
+  if (pool.length === 0) return null;
 
-  const currentIdx = seated.findIndex(
+  const currentIdx = pool.findIndex(
     (u) => String(u.id) === String(currentMasterId ?? ""),
   );
-  if (currentIdx < 0) return seated[0];
-  return seated[(currentIdx + 1) % seated.length];
+  if (currentIdx < 0) return pool[0];
+  return pool[(currentIdx + 1) % pool.length];
 }

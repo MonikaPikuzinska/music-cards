@@ -73,7 +73,7 @@ export const handleUserJoinGame = async ({
         const meInRoom = users.find((u) => String(u.id) === String(user.id));
         setCurrentUser(
           meInRoom
-            ? { ...meInRoom, is_logged: true }
+            ? { ...meInRoom, is_logged: true, points: existingUserGlobal.points ?? 0 }
             : { ...existingUserGlobal, is_logged: true },
         );
         setIsUserCreated(true);

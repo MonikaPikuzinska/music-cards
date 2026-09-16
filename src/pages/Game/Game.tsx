@@ -16,18 +16,22 @@ import {
   isSpotifySessionValid,
 } from "../../services/spotifyService";
 import { supabase } from "../../supabase-client";
-import { getGameById, getUsersByGameId, updateUser } from "../../api/api";
+import type { RealtimeChannel } from "@supabase/supabase-js";
+import { getGameById, getUsersByGameId, updateGame, updateUser } from "../../api/api";
 import { useGamePresence } from "../../hooks/useGamePresence";
 import Timer from "../../components/Timer/Timer";
 import { toBool } from "../../utils/toBool";
 import {
   applyUsersRealtimeToCache,
+  isStaleLastRoundUser,
   mergeUsersLists,
   patchUserInCache,
   refreshUsersForGame,
+  snapshotUsersForRoundReset,
   usersQueryKey,
 } from "../../utils/usersQueryCache";
 import { toSpotifyListItem, sameTrackList } from "../../utils/spotifyTrack";
+import { isTimerExpired } from "../../utils/timerMath";
 import { isLoggedIn } from "../../utils/isLoggedIn";
 import { randomTrackIdFromPool } from "../../utils/canVoteForTrack";
 import {
@@ -37,13 +41,21 @@ import {
   RECOMMENDED_PLAYERS_MIN,
   MAX_PLAYERS,
 } from "../../constants/game";
-import { finalizeVoteRound, startNextRound } from "../../services/roundService";
+import {
+  finalizeVoteRound,
+  NEXT_ROUND_USER_RESET,
+  startNextRound,
+} from "../../services/roundService";
 import {
   parseSongHand,
   pickUniqueHand,
   usedSongIdsFromUsers,
+  songHandSaveErrorMessage,
+  masterPickedFromHand,
 } from "../../utils/songHand";
 import { nonMasterPlayers, shouldFinalizeVotePhase } from "../../utils/votePhase";
+import { isNewRound, mergeIncomingGame, phaseOrder } from "../../utils/mergeIncomingGame";
+import { shouldShowPersonalHand } from "../../utils/personalHand";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -95,16 +107,28 @@ const Game = () => {
   const isFinalState = game?.state === GameState.FINAL;
   const isMasterSelectState = game?.state === GameState.MASTER_SELECTS;
   const prevGameStateRef = useRef<GameState | undefined>(undefined);
+  const prevGameNumberRef = useRef<number | undefined>(undefined);
+  const gameSyncChannelRef = useRef<RealtimeChannel | null>(null);
   const selectPhaseFinalizeRef = useRef(false);
   const votePhaseFinalizeRef = useRef(false);
-  const dealingRef = useRef(false);
+  const timeUpPhaseRef = useRef<GameState | null>(null);
   const loadedHandKeyRef = useRef("");
   const loadedVoteKeyRef = useRef("");
+  const needsNewHandRef = useRef(false);
   const usersListRef = useRef(usersList);
   usersListRef.current = usersList;
+  const gameRef = useRef(game);
+  gameRef.current = game;
 
   const handleTimerFinish = useCallback(() => {
-    setTimeIsUp(true);
+    const state = gameRef.current?.state;
+    if (
+      state === GameState.USERS_SELECT ||
+      state === GameState.USERS_VOTE
+    ) {
+      timeUpPhaseRef.current = state;
+      setTimeIsUp(true);
+    }
   }, []);
 
   const handleUserSaved = useCallback(
@@ -121,17 +145,62 @@ const Game = () => {
     setSelectedTrack(null);
     setSelectedSongsList([]);
     setTracks([]);
+    setTracksLoading(false);
     setTimeIsUp(false);
+    timeUpPhaseRef.current = null;
+    setCurrentUser((prev) =>
+      prev ? { ...prev, ...NEXT_ROUND_USER_RESET } : prev,
+    );
     selectPhaseFinalizeRef.current = false;
     votePhaseFinalizeRef.current = false;
-    dealingRef.current = false;
     loadedHandKeyRef.current = "";
     loadedVoteKeyRef.current = "";
+    needsNewHandRef.current = true;
   }, []);
+
+  const appliedRoundResetRef = useRef<number | undefined>(undefined);
+
+  const applyRoundReset = useCallback(
+    (roundNumber: number) => {
+      if (appliedRoundResetRef.current === roundNumber) return;
+      appliedRoundResetRef.current = roundNumber;
+      resetLocalRound();
+      const cached =
+        queryClient.getQueryData<IUser[]>(usersQueryKey(gameId)) ?? [];
+      snapshotUsersForRoundReset(cached);
+      for (const u of cached) {
+        patchUserInCache(
+          queryClient,
+          gameId,
+          String(u.id),
+          NEXT_ROUND_USER_RESET,
+        );
+      }
+      void refreshUsersForGame(queryClient, gameId);
+    },
+    [gameId, queryClient, resetLocalRound],
+  );
+
+  const applyIncomingGame = useCallback(
+    (incoming: IGame) => {
+      const prev = gameRef.current;
+      const merged = mergeIncomingGame(prev, incoming);
+      if (
+        isNewRound(prev?.game_number, merged.game_number) ||
+        (merged.state === GameState.MASTER_SELECTS &&
+          prev?.state === GameState.FINAL)
+      ) {
+        applyRoundReset(Number(merged.game_number) || 0);
+      }
+      setGame(merged);
+    },
+    [applyRoundReset],
+  );
 
   const handleNextRound = useCallback(async () => {
     if (!gameId || masterId == null) return;
     setNextRoundLoading(true);
+    setErrorMessage(null);
     try {
       const next = await startNextRound({
         gameId,
@@ -139,17 +208,32 @@ const Game = () => {
         currentMasterId: String(masterId),
         gameNumber: game?.game_number ?? 1,
       });
-      if (next) {
-        setGame(next);
-        resetLocalRound();
-        await refreshUsersForGame(queryClient, gameId);
+      if (!next) {
+        setErrorMessage(
+          "Could not save the new Master in the database. In the Supabase SQL Editor run the start_next_round migration, then try Next round again.",
+        );
+        return;
       }
+      applyIncomingGame(next);
+      if (next.master_id) setMasterId(next.master_id);
+      void gameSyncChannelRef.current?.send({
+        type: "broadcast",
+        event: "next_round",
+        payload: next,
+      });
     } catch (err) {
       console.error("Failed to start next round", err);
+      setErrorMessage("Could not start the next round. Try again.");
     } finally {
       setNextRoundLoading(false);
     }
-  }, [game?.game_number, gameId, masterId, queryClient, resetLocalRound, usersList]);
+  }, [
+    applyIncomingGame,
+    game?.game_number,
+    gameId,
+    masterId,
+    usersList,
+  ]);
 
   const masterIdRef = useRef<UUIDTypes | null>(masterId);
 
@@ -169,6 +253,11 @@ const Game = () => {
     currentUser != null &&
     masterId != null &&
     String(currentUser.id) === String(masterId);
+  const masterRow = usersList.find(
+    (u) => String(u.id) === String(masterId ?? ""),
+  );
+  const masterHasPickedThisRound =
+    masterPickedFromHand(masterRow) && !isStaleLastRoundUser(masterRow);
 
   const tracksById = useMemo(() => {
     const map: Record<string, ISpotifyTrackItem> = {};
@@ -193,11 +282,20 @@ const Game = () => {
 
   useEffect(() => {
     if (!gameId) return;
-    const poll = window.setInterval(() => {
+    const pollUsers = window.setInterval(() => {
       void refreshUsersForGame(queryClient, gameId);
     }, 8_000);
-    return () => window.clearInterval(poll);
-  }, [gameId, queryClient]);
+    const pollGameMs = game?.state === GameState.FINAL ? 2_000 : 4_000;
+    const pollGame = window.setInterval(() => {
+      void getGameById(gameId)
+        .then((fetched) => applyIncomingGame(fetched))
+        .catch((err) => console.error("Failed to poll game", err));
+    }, pollGameMs);
+    return () => {
+      window.clearInterval(pollUsers);
+      window.clearInterval(pollGame);
+    };
+  }, [applyIncomingGame, game?.state, gameId, queryClient]);
 
   useEffect(() => {
     if (!id) return;
@@ -205,7 +303,7 @@ const Game = () => {
     (async () => {
       try {
         const fetched = await getGameById(id.toString());
-        if (mounted) setGame(fetched);
+        if (mounted) applyIncomingGame(fetched);
       } catch (err) {
         console.error("Failed to fetch game", err);
       }
@@ -213,7 +311,7 @@ const Game = () => {
     return () => {
       mounted = false;
     };
-  }, [id]);
+  }, [applyIncomingGame, id]);
 
   useEffect(() => {
     if (!gameId) return;
@@ -240,7 +338,9 @@ const Game = () => {
       .subscribe();
 
     const gameSub = supabase
-      .channel(`game-changes-${gameId}`)
+      .channel(`game-sync-${gameId}`, {
+        config: { broadcast: { ack: true } },
+      })
       .on(
         "postgres_changes",
         {
@@ -252,24 +352,29 @@ const Game = () => {
         (payload) => {
           const newRec = payload.new as IGame | null;
           if (!newRec) return;
-          setGame((prev) => {
-            if (
-              prev?.state === GameState.FINAL &&
-              newRec.state === GameState.USERS_VOTE
-            ) {
-              return prev;
-            }
-            return newRec;
-          });
+          applyIncomingGame(newRec);
         },
       )
+      .on("broadcast", { event: "next_round" }, ({ payload }) => {
+        const incoming = payload as IGame | null;
+        if (!incoming?.state) return;
+        applyIncomingGame(incoming);
+      })
+      .on("broadcast", { event: "game_state" }, ({ payload }) => {
+        const incoming = payload as IGame | null;
+        if (!incoming?.state) return;
+        applyIncomingGame(incoming);
+      })
       .subscribe();
 
+    gameSyncChannelRef.current = gameSub;
+
     return () => {
+      gameSyncChannelRef.current = null;
       supabase.removeChannel(usersSub);
       supabase.removeChannel(gameSub);
     };
-  }, [gameId, queryClient]);
+  }, [applyIncomingGame, gameId, queryClient]);
 
   useEffect(() => {
     if (game?.master_id) {
@@ -303,13 +408,8 @@ const Game = () => {
   useEffect(() => {
     if (!masterId || !usersList.length) return;
     const masterRow = usersList.find((u) => String(u.id) === String(masterId));
-    if (
-      masterRow?.my_song_voted &&
-      typeof masterRow.my_song_id === "string" &&
-      masterRow.my_song_id.trim().length > 0
-    ) {
-      setMasterVoted(true);
-    }
+    const masterHasPicked = masterPickedFromHand(masterRow);
+    setMasterVoted(masterHasPicked);
   }, [usersList, masterId]);
 
   // Deal this player a unique 6-song hand that does not overlap with anyone else.
@@ -317,52 +417,51 @@ const Game = () => {
     if (!isUserCreated || !currentUser || !gameId) return;
     if (isUsersVoteState || isFinalState) return;
     const existing = parseSongHand(currentUser.song_hand);
-    if (existing.length >= HAND_SIZE) return;
-    if (dealingRef.current) return;
+    if (existing.length >= HAND_SIZE && !needsNewHandRef.current) return;
 
-    dealingRef.current = true;
-    let mounted = true;
+    const userId = String(currentUser.id);
+    let cancelled = false;
 
     (async () => {
       try {
         const latest = await getUsersByGameId(gameId);
-        const used = usedSongIdsFromUsers(latest, String(currentUser.id));
-        const pool = await fetchUnusedSpotifyTracks(used, HAND_SIZE + 18);
-        const ids = pickUniqueHand(pool, used, HAND_SIZE);
-        if (!mounted) {
-          dealingRef.current = false;
+        if (cancelled) return;
+        const me = latest.find((u) => String(u.id) === userId);
+        const alreadyDealt = parseSongHand(me?.song_hand);
+        if (alreadyDealt.length >= HAND_SIZE && !needsNewHandRef.current) {
+          handleUserSaved(userId, { song_hand: alreadyDealt });
           return;
         }
+        const used = usedSongIdsFromUsers(latest, userId);
+        const pool = await fetchUnusedSpotifyTracks(used, HAND_SIZE + 18);
+        if (cancelled) return;
+        const ids = pickUniqueHand(pool, used, HAND_SIZE);
         if (ids.length < HAND_SIZE) {
-          dealingRef.current = false;
           if (ids.length === 0) {
             setErrorMessage("Could not deal unique songs. Try refreshing.");
           }
           return;
         }
-        await updateUser(String(currentUser.id), { song_hand: ids });
-        if (!mounted) {
-          dealingRef.current = false;
-          return;
-        }
-        handleUserSaved(String(currentUser.id), { song_hand: ids });
-        dealingRef.current = false;
+        await updateUser(userId, { song_hand: ids });
+        if (cancelled) return;
+        needsNewHandRef.current = false;
+        handleUserSaved(userId, { song_hand: ids });
+        setErrorMessage((prev) =>
+          prev && /song list|song_hand|schema cache/i.test(prev) ? null : prev,
+        );
       } catch (err) {
         console.error("Failed to deal song hand", err);
-        if (mounted) {
-          setErrorMessage(
-            "Could not save your song list. Add a song_hand column on users in Supabase, then refresh.",
-          );
-        }
+        if (!cancelled) setErrorMessage(songHandSaveErrorMessage(err));
       }
     })();
 
     return () => {
-      mounted = false;
+      cancelled = true;
     };
   }, [
     currentHandKey,
     currentUser?.id,
+    game?.game_number,
     gameId,
     handleUserSaved,
     isFinalState,
@@ -447,31 +546,40 @@ const Game = () => {
   useEffect(() => {
     const prev = prevGameStateRef.current;
     const next = game?.state;
+    const prevNumber = prevGameNumberRef.current;
+    const nextNumber = game?.game_number;
 
     if (next === GameState.USERS_VOTE && prev !== GameState.USERS_VOTE) {
+      timeUpPhaseRef.current = null;
       setTimeIsUp(false);
       setSelectedTrack(null);
       votePhaseFinalizeRef.current = false;
+      loadedVoteKeyRef.current = "";
+      setTracks([]);
     } else if (
       next === GameState.USERS_SELECT &&
       prev !== GameState.USERS_SELECT
     ) {
+      timeUpPhaseRef.current = null;
       setTimeIsUp(false);
       setSelectedTrack(null);
       selectPhaseFinalizeRef.current = false;
-    } else if (
-      next === GameState.MASTER_SELECTS &&
-      prev === GameState.FINAL
+    }
+
+    if (
+      isNewRound(prevNumber, nextNumber) ||
+      (next === GameState.MASTER_SELECTS && prev === GameState.FINAL)
     ) {
-      resetLocalRound();
+      applyRoundReset(Number(nextNumber) || 0);
     }
 
     prevGameStateRef.current = next;
+    if (nextNumber != null) prevGameNumberRef.current = nextNumber;
 
     if (next === GameState.USERS_VOTE && id) {
       void refreshUsersForGame(queryClient, gameId);
     }
-  }, [game?.state, gameId, id, queryClient, resetLocalRound]);
+  }, [applyRoundReset, game?.game_number, game?.state, gameId, id, queryClient]);
 
   useEffect(() => {
     if (game?.state !== GameState.USERS_VOTE) return;
@@ -484,39 +592,42 @@ const Game = () => {
 
     (async () => {
       try {
-        const usersWithSong = usersListRef.current.filter(
-          (u) => u.my_song_id && u.my_song_id.trim().length > 0,
-        );
+        const songIds = [
+          ...new Set(
+            usersListRef.current
+              .map((u) => (u.my_song_id || "").trim())
+              .filter(Boolean),
+          ),
+        ];
 
-        if (usersWithSong.length === 0) {
+        if (songIds.length === 0) {
           if (mounted) setTracksLoading(false);
           return;
         }
 
-        const results = await Promise.all(
-          usersWithSong.map(async (u) => {
-            try {
-              const track = await getSpotifyTrack(u.my_song_id);
-              return track;
-            } catch (err) {
-              console.error("Failed to fetch vote track for user", u.id, err);
-              return null;
-            }
-          }),
-        );
-
+        const fetched = await getSpotifyTracksByIds(songIds);
         if (!mounted) return;
+
         const unique: ISpotifyTrackItem[] = [];
         const seen = new Set<string>();
-        const sorted = [...results]
-          .filter((t) => t != null && t.id)
-          .sort((a, b) => String(a.id).localeCompare(String(b.id)));
-        for (const t of sorted) {
-          if (seen.has(t.id)) continue;
+        const wanted = new Set(songIds);
+        for (const t of fetched) {
+          if (!t?.id || seen.has(t.id)) continue;
           seen.add(t.id);
           unique.push(toSpotifyListItem(t));
         }
-        setTracks((prev) => (sameTrackList(prev, unique) ? prev : unique));
+
+        setTracks((prev) => {
+          const byId = new Map<string, ISpotifyTrackItem>();
+          for (const t of prev) {
+            if (t.id && wanted.has(t.id)) byId.set(t.id, t);
+          }
+          for (const t of unique) byId.set(t.id, t);
+          const next = [...byId.values()].sort((a, b) =>
+            String(a.id).localeCompare(String(b.id)),
+          );
+          return sameTrackList(prev, next) ? prev : next;
+        });
         loadedVoteKeyRef.current = voteSongIdsKey;
       } catch (err) {
         console.error("Error loading vote-phase tracks:", err);
@@ -537,44 +648,66 @@ const Game = () => {
     const nonMasterUsers = nonMasterPlayers(usersList, masterIdStr);
 
     const moveToState = async (nextState: GameState) => {
+      const current = game.state;
+      if (current === nextState) return;
+      if (phaseOrder(current) > phaseOrder(nextState)) return;
+
       const isTimed =
         nextState === GameState.USERS_SELECT ||
         nextState === GameState.USERS_VOTE;
 
-      const updates: Record<string, unknown> = { state: nextState };
+      const updates: Partial<IGame> = { state: nextState };
       if (isTimed) {
         updates.timer_started_at = new Date().toISOString();
+      } else if (nextState === GameState.MASTER_SELECTS) {
+        updates.timer_started_at = null;
       }
 
-      const { error } = await supabase
-        .from("games")
-        .update(updates)
-        .eq("id", id.toString());
+      try {
+        let updated = await updateGame(id.toString(), updates, {
+          state: current,
+          game_number: game.game_number,
+        });
+        if (updated.length === 0) {
+          updated = await updateGame(id.toString(), updates, {
+            state: current,
+          });
+        }
+        const row =
+          updated[0] ??
+          ({
+            ...game,
+            ...updates,
+          } as IGame);
+        const nextRow =
+          isTimed &&
+          isTimerExpired(row.timer_started_at, GAME_TIMER_DURATION_SEC)
+            ? { ...row, timer_started_at: new Date().toISOString() }
+            : row;
+        if (
+          nextRow.timer_started_at &&
+          nextRow.timer_started_at !== row.timer_started_at
+        ) {
+          void updateGame(id.toString(), {
+            timer_started_at: nextRow.timer_started_at,
+          });
+        }
 
-      if (error) {
-        console.error(`Failed to update game state to ${nextState}`, error);
-        return;
+        timeUpPhaseRef.current = null;
+        if (isTimed) setTimeIsUp(false);
+        applyIncomingGame(nextRow);
+        void gameSyncChannelRef.current?.send({
+          type: "broadcast",
+          event: "game_state",
+          payload: nextRow,
+        });
+      } catch (err) {
+        console.error(`Failed to update game state to ${nextState}`, err);
       }
-
-      if (isTimed) {
-        setTimeIsUp(false);
-      }
-
-      setGame((prev) =>
-        prev
-          ? {
-              ...prev,
-              state: nextState,
-              ...(isTimed
-                ? { timer_started_at: updates.timer_started_at as string }
-                : {}),
-            }
-          : prev,
-      );
     };
 
     if (game.state === GameState.MASTER_SELECTS) {
-      if (masterVoted && !waitingForPlayers) {
+      if (masterHasPickedThisRound && !waitingForPlayers) {
         void moveToState(GameState.USERS_SELECT);
       }
       return;
@@ -588,7 +721,9 @@ const Game = () => {
             typeof u.my_song_id === "string" && u.my_song_id.trim().length > 0,
         );
 
-      if (!allNonMasterSelected && !timeIsUp) return;
+      const selectTimedOut =
+        timeIsUp && timeUpPhaseRef.current === GameState.USERS_SELECT;
+      if (!allNonMasterSelected && !selectTimedOut) return;
 
       const finalizeSelectPhase = async () => {
         if (selectPhaseFinalizeRef.current) return;
@@ -608,19 +743,25 @@ const Game = () => {
                   parseSongHand(u.song_hand).map((songId) => ({ id: songId })),
                 );
                 if (!pick) return;
-                const { error } = await supabase
-                  .from("users")
-                  .update({
-                    my_song_id: pick,
-                    my_song_voted: true,
-                  })
-                  .eq("id", u.id.toString());
-
-                if (error) {
+                const patch: Partial<IUser> = {
+                  my_song_id: pick,
+                  my_song_voted: true,
+                  master_song_id: "",
+                  master_song_voted: false,
+                };
+                try {
+                  await updateUser(String(u.id), patch);
+                  handleUserSaved(String(u.id), patch);
+                  if (String(currentUser?.id) === String(u.id)) {
+                    setCurrentUser((prev) =>
+                      prev ? { ...prev, ...patch } : prev,
+                    );
+                  }
+                } catch (err) {
                   console.error(
                     "Failed to auto-assign my_song_id on timeout for user",
                     u.id,
-                    error,
+                    err,
                   );
                 }
               }),
@@ -638,36 +779,64 @@ const Game = () => {
     }
 
     if (game.state === GameState.USERS_VOTE) {
-      if (!shouldFinalizeVotePhase(usersList, masterIdStr, timeIsUp)) return;
+      const voteTimedOut =
+        timeIsUp && timeUpPhaseRef.current === GameState.USERS_VOTE;
+      if (!shouldFinalizeVotePhase(usersList, masterIdStr, voteTimedOut)) {
+        return;
+      }
+
+      const showVoteResults = (row: IGame) => {
+        applyIncomingGame({
+          ...row,
+          state: GameState.FINAL,
+          timer_started_at: null,
+        });
+        void gameSyncChannelRef.current?.send({
+          type: "broadcast",
+          event: "game_state",
+          payload: {
+            ...row,
+            state: GameState.FINAL,
+            timer_started_at: null,
+          },
+        });
+      };
 
       const completeVotePhase = async () => {
         if (votePhaseFinalizeRef.current) return;
         votePhaseFinalizeRef.current = true;
 
-        setGame((prev) =>
-          prev && prev.state === GameState.USERS_VOTE
-            ? { ...prev, state: GameState.FINAL }
-            : prev,
-        );
+        const localFinal: IGame = {
+          ...(gameRef.current ?? game),
+          state: GameState.FINAL,
+          timer_started_at: null,
+        };
+        showVoteResults(localFinal);
 
         try {
           const updated = await finalizeVoteRound({
             gameId: id.toString(),
             masterId: masterIdStr ?? "",
             votePool: tracks,
+            fallbackUsers: usersList,
           });
           if (updated) {
-            setGame((prev) =>
-              prev
-                ? { ...prev, ...updated, state: GameState.FINAL }
-                : prev,
-            );
+            showVoteResults(updated);
             await refreshUsersForGame(queryClient, gameId);
             return;
           }
-          votePhaseFinalizeRef.current = false;
+          const forced = await updateGame(id.toString(), {
+            state: GameState.FINAL,
+            timer_started_at: null,
+          });
+          if (forced[0]) {
+            showVoteResults(forced[0]);
+            await refreshUsersForGame(queryClient, gameId);
+            return;
+          }
         } catch (err) {
           console.error("Failed to finalize vote round", err);
+        } finally {
           votePhaseFinalizeRef.current = false;
         }
       };
@@ -677,7 +846,7 @@ const Game = () => {
   }, [
     id,
     game?.state,
-    masterVoted,
+    game?.game_number,
     timeIsUp,
     usersList,
     masterId,
@@ -686,6 +855,9 @@ const Game = () => {
     queryClient,
     gameId,
     waitingForPlayers,
+    applyIncomingGame,
+    handleUserSaved,
+    masterHasPickedThisRound,
   ]);
 
   useEffect(() => {
@@ -737,11 +909,23 @@ const Game = () => {
       return;
     }
 
-    if (isCurrentMaster) {
-      setIsButtonSelectDisabled(!!masterVoted);
-    } else {
-      setIsButtonSelectDisabled(!masterVoted);
+    if (isMasterSelectState) {
+      setIsButtonSelectDisabled(
+        isCurrentMaster ? masterPickedFromHand(currentUser) : true,
+      );
+      return;
     }
+
+    if (isUsersSelectState) {
+      setIsButtonSelectDisabled(
+        isCurrentMaster
+          ? masterPickedFromHand(currentUser)
+          : !!currentUser?.my_song_voted || !masterHasPickedThisRound,
+      );
+      return;
+    }
+
+    setIsButtonSelectDisabled(true);
   }, [
     game?.state,
     isUserCreated,
@@ -752,7 +936,9 @@ const Game = () => {
     masterVoted,
     waitingForPlayers,
     isMasterSelectState,
+    isUsersSelectState,
     isCurrentMaster,
+    masterHasPickedThisRound,
   ]);
 
   const phaseMessage = (() => {
@@ -783,11 +969,13 @@ const Game = () => {
     return null;
   })();
 
-  const showPersonalHand =
-    isUserCreated &&
-    (isMasterSelectState
-      ? !waitingForPlayers
-      : Boolean(isUsersSelectState && !isCurrentMaster));
+  const showPersonalHand = shouldShowPersonalHand({
+    isUserCreated,
+    isMasterSelectState,
+    isUsersSelectState,
+    isCurrentMaster,
+    masterHasPickedThisRound: masterPickedFromHand(currentUser),
+  });
   const showVoteSongs = isUserCreated && isUsersVoteState;
   const showSongs = showPersonalHand || showVoteSongs;
 
@@ -812,11 +1000,22 @@ const Game = () => {
             isSelectDisabled={isButtonSelectDisabled}
             timeIsUp={timeIsUp}
             isVotePhase={isUsersVoteState}
-            tracksLoading={tracksLoading}
+            tracksLoading={
+              tracks.length === 0 &&
+              (showPersonalHand || (showVoteSongs && tracksLoading))
+            }
             masterId={masterId}
             currentUser={currentUser}
             onUserSaved={handleUserSaved}
-            hideConfirm={isMasterSelectState && !isCurrentMaster}
+            hideConfirm={
+              isUsersVoteState
+                ? isCurrentMaster
+                : isUsersSelectState
+                  ? isCurrentMaster
+                    ? masterPickedFromHand(currentUser)
+                    : !masterHasPickedThisRound
+                  : !isCurrentMaster
+            }
             confirmLabel={isUsersVoteState ? "Vote" : "Select"}
           />
         ) : (
@@ -833,9 +1032,10 @@ const Game = () => {
         )}
         <CopyLink />
         {phaseMessage ? <p className={messageStyle}>{phaseMessage}</p> : null}
-        {(isUsersSelectState || isUsersVoteState) && game?.timer_started_at ? (
+        {(isUsersVoteState ||
+          (isUsersSelectState && masterHasPickedThisRound)) &&
+        game?.timer_started_at ? (
           <Timer
-            key={game.state}
             timeSec={GAME_TIMER_DURATION_SEC}
             startedAt={game.timer_started_at}
             onFinish={handleTimerFinish}

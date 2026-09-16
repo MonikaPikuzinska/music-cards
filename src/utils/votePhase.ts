@@ -22,14 +22,20 @@ export function playersWhoMustVote(
   return nonMasterPlayers(users, masterId).filter(hasSubmittedSong);
 }
 
+function hasVotedForMaster(user: IUser): boolean {
+  return (
+    toBool(user.master_song_voted) ||
+    (typeof user.master_song_id === "string" &&
+      user.master_song_id.trim().length > 0)
+  );
+}
+
 export function allNonMastersVoted(
   users: IUser[],
   masterId: string | null | undefined,
 ): boolean {
   const others = playersWhoMustVote(users, masterId);
-  return (
-    others.length > 0 && others.every((u) => toBool(u.master_song_voted))
-  );
+  return others.length > 0 && others.every(hasVotedForMaster);
 }
 
 /** End voting as soon as every seated non-Master has voted, or when the timer ends. */

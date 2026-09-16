@@ -5,6 +5,7 @@ import { useAuth } from "../../context/AuthContext";
 import { IUser } from "../../api/interface";
 import { UUIDTypes } from "uuid";
 import { canVoteForTrack } from "../../utils/canVoteForTrack";
+import { parseSongHand } from "../../utils/songHand";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -49,6 +50,12 @@ const SongsList: React.FC<SongsListProps> = ({
   const [isSaving, setIsSaving] = React.useState(false);
   const timeIsUpRef = React.useRef<boolean>(false);
 
+  useEffect(() => {
+    if (!(currentUser?.my_song_id || "").trim() && !isVotePhase) {
+      setSelectedSong(null);
+    }
+  }, [currentUser?.my_song_id, isVotePhase]);
+
   const isVotingMode = isVotePhase;
   const isMaster =
     currentUser?.id != null &&
@@ -78,7 +85,27 @@ const SongsList: React.FC<SongsListProps> = ({
 
       const rows = await updateUser(dbUserId, patch);
       const saved = rows?.[0] as Partial<IUser> | undefined;
-      onUserSaved?.(dbUserId, saved ? { ...patch, ...saved } : patch);
+      const nextPatch: Partial<IUser> = saved ? { ...patch, ...saved } : { ...patch };
+      if (
+        !(String(nextPatch.my_song_id ?? "").trim()) &&
+        String(patch.my_song_id ?? "").trim()
+      ) {
+        nextPatch.my_song_id = patch.my_song_id;
+      }
+      if (
+        !(String(nextPatch.master_song_id ?? "").trim()) &&
+        String(patch.master_song_id ?? "").trim()
+      ) {
+        nextPatch.master_song_id = patch.master_song_id;
+      }
+      if (patch.my_song_voted != null) nextPatch.my_song_voted = patch.my_song_voted;
+      if (patch.master_song_voted != null) {
+        nextPatch.master_song_voted = patch.master_song_voted;
+      }
+      if (parseSongHand(nextPatch.song_hand).length === 0) {
+        delete nextPatch.song_hand;
+      }
+      onUserSaved?.(dbUserId, nextPatch);
     } catch (err) {
       console.error(
         isVotingMode

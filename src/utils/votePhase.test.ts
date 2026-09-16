@@ -32,7 +32,11 @@ describe("votePhase", () => {
   it("does not wait for logged-out extra players", () => {
     const users = [
       user({ id: "m" }),
-      user({ id: "p", master_song_voted: true }),
+      user({
+        id: "p",
+        master_song_voted: true,
+        master_song_id: "song-m",
+      }),
       user({ id: "ghost", is_logged: false, master_song_voted: false }),
     ];
     expect(shouldFinalizeVotePhase(users, "m", false)).toBe(true);
@@ -41,9 +45,26 @@ describe("votePhase", () => {
   it("does not wait for players who never submitted a song this round", () => {
     const users = [
       user({ id: "m" }),
-      user({ id: "p", master_song_voted: true }),
+      user({
+        id: "p",
+        master_song_voted: true,
+        master_song_id: "song-m",
+      }),
       user({ id: "idle", my_song_id: "", master_song_voted: false }),
     ];
+    expect(shouldFinalizeVotePhase(users, "m", false)).toBe(true);
+  });
+
+  it("ends voting when a player has voted even if the song id is still syncing", () => {
+    const users = [
+      user({ id: "m" }),
+      user({
+        id: "p",
+        master_song_voted: true,
+        master_song_id: "",
+      }),
+    ];
+    expect(allNonMastersVoted(users, "m")).toBe(true);
     expect(shouldFinalizeVotePhase(users, "m", false)).toBe(true);
   });
 

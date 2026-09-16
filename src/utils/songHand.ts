@@ -1,3 +1,4 @@
+import { toBool } from "./toBool";
 import { IUser } from "../api/interface";
 import { HAND_SIZE } from "../constants/game";
 
@@ -31,6 +32,20 @@ export function parseSongHand(value: unknown): string[] {
     .split(",")
     .map((part) => part.trim())
     .filter(Boolean);
+}
+
+export function songHandSaveErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err ?? "");
+  if (/schema cache|could not find the ['"]?song_hand/i.test(message)) {
+    return "Your users.song_hand column exists, but Supabase’s API cache has not loaded it yet. In the SQL Editor run: NOTIFY pgrst, 'reload schema'; then refresh the game.";
+  }
+  if (/does not exist|could not find.*column/i.test(message) && /song_hand/i.test(message)) {
+    return "Could not save your song list. Add a song_hand text[] column on users in Supabase, run NOTIFY pgrst, 'reload schema'; then refresh.";
+  }
+  if (message.trim()) {
+    return `Could not save your song list. ${message}`;
+  }
+  return "Could not save your song list. Try refreshing.";
 }
 
 export function usedSongIdsFromUsers(
@@ -72,5 +87,36 @@ export function handsAreUnique(users: IUser[]): boolean {
       seen.add(id);
     }
   }
+  return true;
+}
+
+/** Master finished picking only when the chosen song is in this round’s 6-song hand. */
+export function masterPickedFromHand(
+  master:
+    | Pick<IUser, "my_song_id" | "my_song_voted" | "song_hand">
+    | null
+    | undefined,
+  handSize = HAND_SIZE,
+): boolean {
+  if (!master) return false;
+  const pick = (master.my_song_id || "").trim();
+  if (!toBool(master.my_song_voted) || !pick) return false;
+  const hand = parseSongHand(master.song_hand);
+  return hand.length >= handSize && hand.includes(pick);
+}
+
+/** True if the Master has a saved pick that does not belong to a newer dealt hand. */
+export function masterHasSubmittedPick(
+  master:
+    | Pick<IUser, "my_song_id" | "my_song_voted" | "song_hand">
+    | null
+    | undefined,
+  handSize = HAND_SIZE,
+): boolean {
+  if (!master) return false;
+  const pick = (master.my_song_id || "").trim();
+  if (!toBool(master.my_song_voted) || !pick) return false;
+  const hand = parseSongHand(master.song_hand);
+  if (hand.length >= handSize && !hand.includes(pick)) return false;
   return true;
 }

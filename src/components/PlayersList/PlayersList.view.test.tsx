@@ -58,4 +58,24 @@ describe("PlayersList", () => {
     );
     expect(screen.queryByText("Piotr")).not.toBeInTheDocument();
   });
+
+  it("lists players in alphabetical order by name", () => {
+    render(
+      <PlayersList
+        usersList={[
+          { ...users[1], id: "z", name: "Zoe" },
+          { ...users[0], id: "a", name: "Ada" },
+          { ...users[1], id: "m2", name: "mina" },
+        ]}
+        masterId="m"
+        gameState={GameState.MASTER_SELECTS}
+      />,
+    );
+    const names = screen
+      .getAllByRole("listitem")
+      .map((item) => item.textContent ?? "");
+    expect(names[0]).toMatch(/Ada/);
+    expect(names[1]).toMatch(/mina/i);
+    expect(names[2]).toMatch(/Zoe/);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcTimeLeft, formatMMSS } from "./timerMath";
+import { calcTimeLeft, formatMMSS, isTimerExpired } from "./timerMath";
 
 describe("timerMath", () => {
   it("formats seconds as mm:ss", () => {
@@ -16,5 +16,13 @@ describe("timerMath", () => {
     expect(calcTimeLeft(120, startedAt, start + 30_000)).toBe(90);
     expect(calcTimeLeft(120, startedAt, start + 120_000)).toBe(0);
     expect(calcTimeLeft(120, startedAt, start + 200_000)).toBe(0);
+  });
+
+  it("treats a started timer as expired only after the duration elapses", () => {
+    const startedAt = "2026-09-15T08:00:00.000Z";
+    const start = Date.parse(startedAt);
+    expect(isTimerExpired(null, 120, start)).toBe(false);
+    expect(isTimerExpired(startedAt, 120, start + 119_000)).toBe(false);
+    expect(isTimerExpired(startedAt, 120, start + 120_000)).toBe(true);
   });
 });

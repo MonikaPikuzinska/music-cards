@@ -6,6 +6,7 @@ import { UUIDTypes } from "uuid";
 import { faCheck } from "@fortawesome/free-solid-svg-icons";
 import { toBool } from "../../utils/toBool";
 import { isLoggedIn } from "../../utils/isLoggedIn";
+import { byNameThenId } from "../../utils/nextMaster";
 
 interface PlayersListProps {
   usersList: IUser[];
@@ -46,9 +47,11 @@ const PlayersList: React.FC<PlayersListProps> = ({
     <ul>
       {usersList
         .filter((u) => isLoggedIn(u))
+        .sort(byNameThenId)
         .map((u) => {
           const showCheck = shouldShowVotedCheck(u, gameState, masterId);
           const isMaster = String(masterId) === String(u.id);
+          const pts = Number(u.points) || 0;
           return (
             <li key={String(u.id)} className="mb-1">
               <FontAwesomeIcon
@@ -67,8 +70,8 @@ const PlayersList: React.FC<PlayersListProps> = ({
                   Master
                 </span>
               ) : null}
-              <span className="mr-2">{`${u.points} ${
-                u.points === 1 ? "point" : "points"
+              <span className="mr-2">{`${pts} ${
+                pts === 1 ? "point" : "points"
               }`}</span>
               {showCheck ? (
                 <FontAwesomeIcon className="text-indigo-400" icon={faCheck} />

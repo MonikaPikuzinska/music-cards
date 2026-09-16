@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   handsAreUnique,
+  masterHasSubmittedPick,
+  masterPickedFromHand,
   parseSongHand,
   pickUniqueHand,
+  songHandSaveErrorMessage,
   usedSongIdsFromUsers,
 } from "./songHand";
 import { IUser } from "../api/interface";
@@ -29,6 +32,40 @@ describe("songHand", () => {
     expect(parseSongHand("{a,b}")).toEqual(["a", "b"]);
   });
 
+  it("treats a leftover pick as not this round’s Master choice", () => {
+    expect(
+      masterPickedFromHand({
+        my_song_id: "old-pick",
+        my_song_voted: true,
+        song_hand: ["new-a", "new-b", "new-c", "new-d", "new-e", "new-f"],
+      }),
+    ).toBe(false);
+    expect(
+      masterPickedFromHand({
+        my_song_id: "new-a",
+        my_song_voted: true,
+        song_hand: ["new-a", "new-b", "new-c", "new-d", "new-e", "new-f"],
+      }),
+    ).toBe(true);
+  });
+
+  it("does not count a leftover pick while the new hand is still empty", () => {
+    expect(
+      masterPickedFromHand({
+        my_song_id: "song-m",
+        my_song_voted: true,
+        song_hand: [],
+      }),
+    ).toBe(false);
+    expect(
+      masterHasSubmittedPick({
+        my_song_id: "song-m",
+        my_song_voted: true,
+        song_hand: [],
+      }),
+    ).toBe(true);
+  });
+
   it("deals a hand that does not overlap with songs already used", () => {
     const used = new Set(["t1", "t2"]);
     const pool = ["t1", "t2", "t3", "t4", "t5", "t6", "t7", "t8"].map((id) => ({
@@ -50,5 +87,15 @@ describe("songHand", () => {
 
     const overlapping = [user("a", ["s1"]), user("b", ["s1"])];
     expect(handsAreUnique(overlapping)).toBe(false);
+  });
+
+  it("explains a stale Supabase schema cache instead of a missing column", () => {
+    expect(
+      songHandSaveErrorMessage(
+        new Error(
+          "Could not find the 'song_hand' column of 'users' in the schema cache",
+        ),
+      ),
+    ).toMatch(/NOTIFY pgrst, 'reload schema'/);
   });
 });
