@@ -1,5 +1,5 @@
 import { GameState, IGame, IUser } from "../api/interface";
-import { getGameById, getUsersByGameId, saveNextRoundGame, updateGame, updateUser } from "../api/api";
+import { getGameById, getUsersByGameId, saveNextRoundGame, updateGame, updateUser, applyRoundScoresRpc } from "../api/api";
 import { calculateRoundScores } from "../utils/scoring";
 import { getNextMaster } from "../utils/nextMaster";
 import { randomTrackIdFromPool } from "../utils/canVoteForTrack";
@@ -68,11 +68,16 @@ async function persistRoundScores(
   if (users.length === 0) return;
 
   users = await assignMissingVotes(users, masterId, votePool);
-  await applyRoundScores(users, masterId);
-  try {
-    await updateGame(gameId, { scores_applied: true });
-  } catch (err) {
-    console.error("Could not mark scores_applied", err);
+  const savedWithRpc = await applyRoundScoresRpc(gameId, masterId).catch(() => false);
+  if (!savedWithRpc) {
+    await applyRoundScores(users, masterId);
+  }
+  if (savedWithRpc) {
+    try {
+      await updateGame(gameId, { scores_applied: true });
+    } catch (err) {
+      console.error("Could not mark scores_applied", err);
+    }
   }
 }
 

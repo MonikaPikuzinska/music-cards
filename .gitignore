@@ -19,6 +19,9 @@
 .env.production.local
 .env
 
+# SQL already applied in the Supabase dashboard
+/supabase
+
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

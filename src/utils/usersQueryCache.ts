@@ -137,9 +137,7 @@ const CLEARED_ROUND_PICKS: Pick<
 function mergeVoteFields(prevU: IUser, freshU: IUser): IUser {
   const points = !isLoggedIn(freshU)
     ? 0
-    : Number.isFinite(Number(freshU.points))
-      ? Number(freshU.points)
-      : Number(prevU.points) || 0;
+    : Math.max(Number(freshU.points) || 0, Number(prevU.points) || 0);
 
   if (isFreshRoundReset(freshU) || isStaleLastRoundUser(freshU)) {
     return normalizeUser({

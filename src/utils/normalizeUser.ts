@@ -10,6 +10,7 @@ export function normalizeUser(user: IUser): IUser {
       typeof user.my_song_id === "string" ? user.my_song_id.trim() : "",
     master_song_id:
       typeof user.master_song_id === "string" ? user.master_song_id.trim() : "",
+    points: Number.isFinite(Number(user.points)) ? Number(user.points) : 0,
     my_song_voted: toBool(user.my_song_voted),
     master_song_voted: toBool(user.master_song_voted),
     is_logged: isLoggedIn(user),

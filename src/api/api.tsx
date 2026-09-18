@@ -173,6 +173,14 @@ export async function getUsersByGameId(gameId: string) {
   return (data ?? []).map((row) => normalizeUser(row as IUser));
 }
 
+export async function applyRoundScoresRpc(gameId: string, masterId: string) {
+  const { error } = await supabase.rpc("apply_round_scores", {
+    p_game_id: gameId,
+    p_master_id: masterId,
+  });
+  return !error;
+}
+
 const UNKNOWN_COLUMN = /clue|scores_applied/i;
 
 function stripOptionalGameColumns(updates: Partial<IGame>): Partial<IGame> {

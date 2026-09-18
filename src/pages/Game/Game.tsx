@@ -56,6 +56,7 @@ import {
 import { nonMasterPlayers, shouldFinalizeVotePhase } from "../../utils/votePhase";
 import { isNewRound, mergeIncomingGame, phaseOrder } from "../../utils/mergeIncomingGame";
 import { shouldShowPersonalHand } from "../../utils/personalHand";
+import { calculateRoundScores } from "../../utils/scoring";
 
 interface ISpotifyTrackItem {
   id: string;
@@ -111,6 +112,7 @@ const Game = () => {
   const gameSyncChannelRef = useRef<RealtimeChannel | null>(null);
   const selectPhaseFinalizeRef = useRef(false);
   const votePhaseFinalizeRef = useRef(false);
+  const scoresAppliedRoundRef = useRef<number | null>(null);
   const timeUpPhaseRef = useRef<GameState | null>(null);
   const loadedHandKeyRef = useRef("");
   const loadedVoteKeyRef = useRef("");
@@ -130,6 +132,29 @@ const Game = () => {
       setTimeIsUp(true);
     }
   }, []);
+
+  const addRoundScoresToCache = useCallback(
+    (users: IUser[], scoringMasterId: string, roundNumber: number) => {
+      if (!gameId) return;
+      if (scoresAppliedRoundRef.current === roundNumber) return;
+      const hasPicks = users.some(
+        (u) =>
+          (u.my_song_id || "").trim().length > 0 ||
+          (u.master_song_id || "").trim().length > 0,
+      );
+      if (!hasPicks) return;
+      scoresAppliedRoundRef.current = roundNumber;
+      const deltas = calculateRoundScores(users, scoringMasterId);
+      for (const u of users) {
+        const add = deltas[String(u.id)] ?? 0;
+        if (add <= 0) continue;
+        patchUserInCache(queryClient, gameId, String(u.id), {
+          points: (Number(u.points) || 0) + add,
+        });
+      }
+    },
+    [gameId, queryClient],
+  );
 
   const handleUserSaved = useCallback(
     (userId: string, patch: Partial<IUser>) => {
@@ -164,9 +189,15 @@ const Game = () => {
     (roundNumber: number) => {
       if (appliedRoundResetRef.current === roundNumber) return;
       appliedRoundResetRef.current = roundNumber;
-      resetLocalRound();
       const cached =
         queryClient.getQueryData<IUser[]>(usersQueryKey(gameId)) ?? [];
+      const finishedRound = Math.max(1, roundNumber - 1);
+      addRoundScoresToCache(
+        cached,
+        String(gameRef.current?.master_id ?? ""),
+        finishedRound,
+      );
+      resetLocalRound();
       snapshotUsersForRoundReset(cached);
       for (const u of cached) {
         patchUserInCache(
@@ -178,7 +209,7 @@ const Game = () => {
       }
       void refreshUsersForGame(queryClient, gameId);
     },
-    [gameId, queryClient, resetLocalRound],
+    [addRoundScoresToCache, gameId, queryClient, resetLocalRound],
   );
 
   const applyIncomingGame = useCallback(
@@ -202,6 +233,11 @@ const Game = () => {
     setNextRoundLoading(true);
     setErrorMessage(null);
     try {
+      addRoundScoresToCache(
+        usersList,
+        String(masterId),
+        Number(game?.game_number) || 1,
+      );
       const next = await startNextRound({
         gameId,
         users: usersList,
@@ -229,6 +265,7 @@ const Game = () => {
     }
   }, [
     applyIncomingGame,
+    addRoundScoresToCache,
     game?.game_number,
     gameId,
     masterId,
@@ -812,6 +849,11 @@ const Game = () => {
           timer_started_at: null,
         };
         showVoteResults(localFinal);
+        addRoundScoresToCache(
+          usersListRef.current,
+          masterIdStr ?? "",
+          Number(game.game_number) || 1,
+        );
 
         try {
           const updated = await finalizeVoteRound({
@@ -856,6 +898,7 @@ const Game = () => {
     gameId,
     waitingForPlayers,
     applyIncomingGame,
+    addRoundScoresToCache,
     handleUserSaved,
     masterHasPickedThisRound,
   ]);

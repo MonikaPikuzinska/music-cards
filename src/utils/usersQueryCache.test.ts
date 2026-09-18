@@ -32,10 +32,10 @@ describe("mergeUsersLists", () => {
     });
   });
 
-  it("keeps zero points when that player logs back in", () => {
-    const prev = [player({ id: "u1", points: 0, is_logged: false })];
+  it("keeps scored points when a later poll still has zero", () => {
+    const prev = [player({ id: "u1", points: 5, is_logged: true })];
     const fresh = [player({ id: "u1", points: 0, is_logged: true })];
-    expect(mergeUsersLists(prev, fresh)[0].points).toBe(0);
+    expect(mergeUsersLists(prev, fresh)[0].points).toBe(5);
   });
 
   it("drops last round's song and vote when the server sends a cleared row", () => {

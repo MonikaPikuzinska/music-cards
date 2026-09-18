@@ -6,6 +6,7 @@ const updateGame = vi.fn();
 const updateUser = vi.fn();
 const getUsersByGameId = vi.fn();
 const saveNextRoundGame = vi.fn();
+const applyRoundScoresRpc = vi.fn();
 
 vi.mock("../api/api", () => ({
   getGameById: (...args: unknown[]) => getGameById(...args),
@@ -13,6 +14,7 @@ vi.mock("../api/api", () => ({
   updateUser: (...args: unknown[]) => updateUser(...args),
   getUsersByGameId: (...args: unknown[]) => getUsersByGameId(...args),
   saveNextRoundGame: (...args: unknown[]) => saveNextRoundGame(...args),
+  applyRoundScoresRpc: (...args: unknown[]) => applyRoundScoresRpc(...args),
 }));
 
 import { startNextRound } from "./roundService";
@@ -61,6 +63,7 @@ describe("startNextRound", () => {
     saveNextRoundGame.mockReset().mockResolvedValue(
       game(GameState.MASTER_SELECTS, { master_id: "p", game_number: 2 }),
     );
+    applyRoundScoresRpc.mockReset().mockResolvedValue(false);
     getGameById.mockResolvedValue(
       game(GameState.MASTER_SELECTS, { master_id: "p", game_number: 2 }),
     );
