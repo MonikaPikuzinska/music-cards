@@ -33,6 +33,17 @@ describe("Login", () => {
     expect(
       screen.getByRole("button", { name: "Log in with Spotify" }),
     ).toBeInTheDocument();
+    expect(screen.getByText("Access required")).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /monika.pikuzinska01@gmail.com/i }),
+    ).toHaveAttribute(
+      "href",
+      expect.stringContaining("mailto:monika.pikuzinska01@gmail.com"),
+    );
+    expect(screen.getByText("your Spotify username")).toBeInTheDocument();
+    expect(
+      screen.getByText("the email connected to that Spotify account"),
+    ).toBeInTheDocument();
   });
 
   it("lets a logged-in player create a game or join with a link", () => {
