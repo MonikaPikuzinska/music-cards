@@ -1001,13 +1001,13 @@ const Game = () => {
     }
     if (isUsersSelectState) {
       return isCurrentMaster
-        ? "Say your clue on the phone. Other players are picking a song from their own lists."
-        : "Pick 1 song from your list that matches the Master’s clue (said on the phone). You have 2 minutes.";
+        ? "Say your clue. Other players are picking a song from their own lists."
+        : "Pick 1 song from your list that matches the Master’s clue. You have 2 minutes.";
     }
     if (isMasterSelectState) {
       return isCurrentMaster
-        ? "Pick 1 song from your list, then say a clue on the phone. Do not type the clue in the app."
-        : "These are your songs. Wait for the Master to pick a song and say a clue on the phone.";
+        ? "Pick 1 song from your list, then say a clue."
+        : "These are your songs. Wait for the Master to pick a song and say a clue.";
     }
     return null;
   })();
