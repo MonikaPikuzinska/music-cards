@@ -36,3 +36,8 @@
   opacity: 1;
   transform: translateY(0);
 }
+
+/* Spotify embeds paint above in-page overlays; hide them while the dialog is open. */
+body.modal-open iframe {
+  visibility: hidden;
+}

@@ -11,7 +11,7 @@ export const NavBar = () => {
   const navigate = useNavigate();
 
   return (
-    <nav className="fixed bg-gray-100 top-0 w-full">
+    <nav className="fixed top-0 z-40 w-full bg-gray-100">
       <PopUp isOpen={openInstruction} onClose={() => setOpenInstruction(false)}>
         <h2 className="text-xl font-bold mb-4">Instructions</h2>
         <Instruction />

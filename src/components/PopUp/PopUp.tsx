@@ -1,4 +1,5 @@
-import React from "react";
+import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faXmark } from "@fortawesome/free-solid-svg-icons";
 
@@ -9,13 +10,30 @@ interface PopUpProps {
 }
 
 const PopUp: React.FC<PopUpProps> = ({ isOpen, onClose, children }) => {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.classList.add("modal-open");
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.classList.remove("modal-open");
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 flex items-center justify-center bg-gray-950/50 z-[1000]">
-      <div className="bg-white rounded-xl shadow-2xl w-[50vw] h-[80vh] flex flex-col relative p-8 overflow-y-auto">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-gray-950/50"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="relative z-[9999] flex h-[80vh] w-[50vw] flex-col overflow-y-auto rounded-xl bg-white p-8 shadow-2xl">
         <button
-          className="absolute top-4 right-4 text-3xl text-gray-700 cursor-pointer hover:text-black focus:outline-none"
+          className="absolute top-4 right-4 cursor-pointer text-3xl text-gray-700 hover:text-black focus:outline-none"
           onClick={onClose}
           aria-label="Close popup"
         >
@@ -23,7 +41,8 @@ const PopUp: React.FC<PopUpProps> = ({ isOpen, onClose, children }) => {
         </button>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
